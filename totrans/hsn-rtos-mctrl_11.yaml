@@ -1,0 +1,1296 @@
+- en: Protecting Data and Synchronizing Tasks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: What do race conditions, corrupt data, and missed real-time deadlines all have
+    in common? Well, for one, they are all mistakes that can be easily made when operations
+    are performed in parallel. These are also mistakes that are avoidable (in part)
+    through using the right tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This chapter covers many of the mechanisms that are used to synchronize tasks
+    and protect shared data. All the explanations in this chapter will contain example
+    code and analysis that will have been performed using Ozone and SystemView.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, we will explore the differences between semaphores and mutexes. Then,
+    you will understand how, when, and why to use a semaphore. You'll also learn about
+    race conditions and see how a mutex can avoid such situations. Example code will
+    be provided throughout. The concept of race conditions will be introduced and
+    fixed using a mutex in live code that can be run and analyzed on the Nucleo development
+    board. Finally, FreeRTOS software timers will be introduced and a discussion of
+    common real-world use cases for RTOS-based software timers and MCU hardware peripheral
+    timers will be provided.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will cover the following topics in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using semaphores
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using mutexes
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Avoiding race conditions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using software timers
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'To complete the hands-on exercises in this chapter, you will require the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Nucleo F767 development board
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Micro USB cable
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: ST/Atollic STM32CubeIDE and its source code (the instructions for this can be
+    found in [Chapter 5](84a945dc-ff6c-4ec8-8b9c-84842db68a85.xhtml)*, Selecting an
+    IDE – Setting Up Our IDE*)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: SEGGER JLink, Ozone, and SystemView ([Chapter 6](699daa80-06ae-4acc-8b93-a81af2eb774b.xhtml),
+    *Debugging Tools for Real-Time Systems*)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The easiest way to build the examples in this chapter is to build all Eclipse
+    *configurations* at once, and then load and view them using Ozone. To do this,
+    follow these steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In STM32CubeIDE, right-click on the project.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Select Build.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Select Build All. All the examples will be built into their own named subdirectory
+    (this may take a while).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In Ozone, you can now quickly load each `<exampleName>.elf` file. See [Chapter
+    6](699daa80-06ae-4acc-8b93-a81af2eb774b.xhtml),* Debugging Tools for Real-Time
+    Systems*, for instructions on how to do this. The correct source files that are
+    linked in the executable will be automatically displayed.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: All the source code for this chapter can be found at [https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapter_8](https://github.com/PacktPublishing/Hands-On-RTOS-with-Microcontrollers/tree/master/Chapter_8).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using semaphores
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We've mentioned several times now that tasks are meant to be programmed so that
+    they're *running in parallel*. This means that, by default, they have no relation
+    to one another in time. No assumptions can be made as to where tasks are in their
+    execution with respect to one another – unless they are explicitly synchronized.
+    Semaphores are one mechanism that's used to provide synchronization between tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Synchronization via semaphores
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The following is a diagram of the abstract example we covered back in [Chapter
+    2](a410ddd6-10eb-4e97-965e-e390f4dc2890.xhtml), *Task Signaling and Communication
+    Mechanisms*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/d82cc6e2-4a19-4439-ba39-632cfccaedb0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: The preceding diagram shows `TaskB` waiting on a semaphore from `TaskA`. Each
+    time `TaskB` acquires the desired semaphore, it will continue its loop. `TaskA`
+    repeatedly *gives* a semaphore, which effectively synchronizes when `TaskB` runs.
+    Now that we have a full development environment set up, let's take a look at what
+    this looks like with some actual code. Then, we'll run it on hardware and blink
+    a few LEDs to see exactly what this behavior looks like in the real world.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'First, the semaphore needs to be created, and its handle (or pointer) has to
+    be stored so that it can be used between tasks. The following excerpt has been
+    taken from `mainSemExample.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The semaphore pointer, that is, `semPtr`, needs to be placed in a location that
+    is accessible to other functions that need access to the semaphore. For example,
+    don't declare `semPtr` as a local variable inside a function – it won't be available
+    to other functions and it will go out of scope as soon as the function returns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To see what's going on with the source code *and* see how the system is reacting,
+    we'll associate a few different LEDs with task A and task B.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Task A` will toggle the green LED and *give* a semaphore every five times
+    it''s run through the blinking loop, as shown in the following excerpt from `mainSemExample.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`Task B`, on the other hand, will rapidly blink the blue LED three times after
+    successfully *taking* the semaphore, as shown in the following excerpt from `mainSemExample.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Great! Now that our code is ready, let's see what this behavior looks like.
+  prefs: []
+  type: TYPE_NORMAL
+- en: FreeRTOS allows for indefinite delays in certain circumstances through the use
+    of `portMAX_DELAY`. As long as `#define INCLUDE_vTaskSuspend 1` is present in `FreeRTOSConfig.h`,
+    the calling task will be suspended indefinitely and the return value of `xSemaphoreTake()`
+    can be safely ignored. When `vTaskSuspend()` is not defined as 1, `portMAX_DELAY`
+    will result in a very long delay (0xFFFFFFF RTOS ticks (~ 49.7 days) on our system),
+    but not an infinite one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the behavior
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here''s what this example looks like when viewed using SystemView:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/61787d72-0a4f-4239-8f1c-e77633e1f56a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Notice the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blocking with semaphores is efficient as each task is only using 0.01% of the
+    CPU time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A task that is blocked because it is waiting on a semaphore won't run until
+    it is available. This is true even if it is the highest-priority task in the system
+    and no other tasks are currently `READY`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Now that you've seen an efficient way of synchronizing tasks with a semaphore,
+    let's have a look at another way of achieving the same behavior using polling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Wasting cycles – synchronization by polling
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The following example has the exact same behavior as when we're looking at LEDs
+    from the outside of the board – the observable pattern of the LEDs is exactly
+    the same as the previous example. The difference is how much CPU time is being
+    used by continuously reading the same variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here''s the updated `GreenTaskA()` – only a single line has changed. This excerpt
+    has been taken from `mainPolledExample.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of calling `xSmeaphoreGive()`, we're simply setting the `flag` variable
+    to `1`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A similar small change has been made to `BlueTaskB()`, trading out a `while`
+    loop that polls on `flag`, instead of using `xSemaphoreTake()`. This can be seen
+    in the following excerpt from `mainPolledExample.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: These are the only changes that are required. `BlueTaskB()` will wait to move
+    on (indefinitely) until `flag` is set to something other than `0`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To run this example, use the `Chapter_8/polledExample` file's build configuration.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the behavior
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Since only a few changes were made, we might not expect there to be *that*
+    much of a difference in terms of how the MCU is behaving, given the new code.
+    However, the output that can be observed with SystemView tells a different story:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/06f10d4a-30cf-4cfb-9886-9e31036a2b96.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Note the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`BlueTaskB` is now using 100% of the CPU time while polling the value of `flag`
+    (the 70% CPU load is lower because the task is sleeping while actually blinking
+    the LED).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Even though `BlueTaskB` is hogging the CPU, `GreenTaskA` still runs consistently
+    since it has a higher priority. `GreenTaskA` would be starved of CPU if it was
+    a lower priority than `BlueTaskB`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'So, synchronizing tasks by polling on a variable *does* work as expected, but
+    there are some side effects: increased CPU utilization and a strong dependency
+    on task priorities. Of course, there are ways of reducing the CPU load of `BlueTaskB`.
+    We could have added a delay between polling, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will reduce the CPU load of `BlueTaskB` to around 5%. Beware, though, that
+    this delay also guarantees that `BlueTaskB` has a worst-case delay of at *least*
+    1 RTOS tick period (1 ms, in our setup).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Time-bound semaphores
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Earlier, we mentioned that one of the critical aspects of RTOSes was their
+    ability to provide a way to time-bound operations; that is, they can guarantee
+    a call doesn''t stop a task from executing any longer than is desirable. An RTOS
+    *does not guarantee the successful timeliness of an operation*. It only promises
+    that the call will be returned in an amount of time. Let''s have another look
+    at the call for taking a semaphore:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'From the preceding code, we can see the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`semPtr` is just a pointer to the semaphore.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`maxDelay` is the interesting part of this call – it specifies the maximum
+    amount of time to wait for the semaphore (in RTOS *tick* units).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The return value is `pdPASS` (the semaphore was taken in time) or `pdFALSE`
+    (the semaphore was not taken in time). *It is extremely important to check this
+    return value.*
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If a semaphore were to be taken successfully, the return value would be `pdPASS`.
+    This is the only case where the task will continue because a semaphore was given.
+    If the return value is not `pdPASS`, the call to `xSemaphoreTake()` has failed,
+    either because of a timeout or a programming error (such as passing in an invalid
+    `SemaphoreHandle_t`). Let's take a more in-depth look at this with an example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this example, we''ll be using all three LEDs on the dev board to indicate
+    different states:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Green LED**: `GreenTaskA()` blinks at a steady 5 Hz with a 50% duty cycle.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Blue LED**: Rapid blinks three times when `TaskB()` receives the semaphore
+    within 500 ms.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Red LED**: Turned on after a timeout from `xSemaphoreTake()`. This is left
+    on until it''s reset by `TaskB()`, as long as it receives the semaphore within
+    500 ms of starting to wait for it.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In many systems, missing a deadline can be a cause for (major) concern. It all
+    depends on what it is you're implementing. This example is just a simple loop
+    with a red light for when a deadline is missed. However, other systems may require
+    (emergency) procedures to be taken to prevent significant failure/damage if a
+    deadline is missed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`GreenTaskA()` has two responsibilities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blink the green LED
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '*Give* the semaphore at pseudo-random intervals'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'These responsibilities can be seen in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`TaskB()` also has two responsibilities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Blink the blue LED (as long as the semaphore shows up within 500 ms).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Turn on the red LED (if the semaphore doesn''t show up within 500 ms). The
+    red LED will stay on until the semaphore has successfully been taken within 500
+    ms of starting to wait for it:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This setup guarantees that `TaskB() ` will be taking some action *at least*
+    every 500 ms.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the behavior
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When building and loading the firmware included in the `semaphoreTimeBound` build
+    configuration, you''ll see something similar to the following when using SystemView:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/c0f7a646-6c8c-4ca0-ac34-905facf9676c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Note the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Marker 1** indicates `TaskB` didn''t receive the semaphore within 500 ms.
+    Notice there is no followup execution from `TaskB` – it immediately went back
+    to taking the semaphore again.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '**Marker 2** indicates `TaskB` received the semaphore within 500 ms. Looking
+    at the graph, we can see it was actually around 200 ms. The periodic lines (circled
+    in the preceding image) in the `TaskB` lane are the blue LED turning on and off.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: After blinking the blue LED, `TaskB` goes back to waiting for the semaphore.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Log messages are indicated by blue *i* icons within the timeline, which helps
+    to associate descriptive comments in code while visualizing behavior. Double-clicking
+    the blue boxes automatically jumps the terminal to the associated log message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You'll notice that the blue LED doesn't always blink – occasionally, the red
+    LED blinks instead. Each time the red LED blinks, this indicates that `semPtr`
+    was not taken within 500 ms. This shows that the code is attempting to take a
+    semaphore as an upper bound on the amount of time acceptable before *giving up*
+    on the semaphore, possibly triggering an error condition.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As an exercise, see if you can capture a red blink and track where the timeout
+    occurred using the terminal output (on the right) and the timeline output (on
+    the bottom) – how much time elapsed from when `TaskB` attempted to *take the semaphore* and
+    when the red LED blinked? Now, modify the 500 ms timeout in the source code, compile
+    and upload it with Ozone, and watch for the change in SystemView.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Counting semaphores
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: While binary semaphores can only have values between 0 and 1, counting semaphores
+    can have a wider range of values. Some use cases for counting semaphores include
+    simultaneous connections in a communication stack or static buffers from a memory
+    pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, let's say we have a TCP/IP stack that supports multiple simultaneous
+    TCP sessions, but the MCU only has enough RAM to support three simultaneous TCP
+    sessions. This would be a perfect use case for a counting semaphore.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The counting semaphore for this application needs to be defined so that it
+    has a maximum count of `3` and an initial value of `3` (three TCP sessions are
+    available):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The code that requests to open a TCP session would *take* `semPtr`, reducing
+    its count by 1:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Whenever a TCP session is closed, the code closing the session *gives* `semPtr`,
+    increasing its count by 1:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By using a counting semaphore, you can control access to a limited number of
+    available TCP sessions. By doing this, we''re accomplishing two things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Limiting the number of simultaneous TCP sessions, thus keeping resource usage
+    in check.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Providing time-bound access for creating a TCP session. This means the code
+    is able to specify how long it will wait for a session to become available.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Counting semaphores are useful for controlling access to a shared resource when
+    more than one instance is available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Priority inversion (how not to use semaphores)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Since semaphores are used to synchronize multiple tasks and guard shared resources,
+    does this mean we can use them to protect a piece of data that's being shared
+    between two tasks? Since each task needs to know when it is safe to access the
+    data, the tasks need to be synchronized, right? The danger with this approach
+    is that semaphores have no concept of task priority. A higher-priority task waiting
+    on a semaphore being held by a lower-priority task will wait, regardless of what
+    else might be going on in the system. An example of *why* this can become a problem
+    will be shown here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here''s the conceptual example we covered in [Chapter 3](a410ddd6-10eb-4e97-965e-e390f4dc2890.xhtml)*,
+    Task Signaling and Communication Mechanisms*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/470ca651-eb41-4c68-98c5-0f8b92f88990.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: The main problems with this sequence are *steps 3* and *4*. `TaskB` shouldn't
+    be able to preempt `TaskC` if a higher-priority (`TaskA`) task is waiting on the
+    semaphore. Let's look at an example of this *in the wild* with some real code
+    and observe the behavior first-hand!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For the actual example, we'll maintain the exact same function names as the
+    theoretical example we covered previously. The *shared resource* will be the function
+    that's used to blink the LEDs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The *shared LEDs* are only an example. In practice, you'll often find that data
+    that's been shared between tasks needs to be protected. There is also the chance
+    that the multiple tasks may attempt to use the same hardware peripheral, in which
+    case access to that resource may need to be protected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To provide some visual feedback, we'll also assign some LEDs to the various
+    tasks. Let's have a look at the code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Task A (highest priority)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Task A is responsible for blinking the green LED, but only *after* `semPtr` has
+    been taken (within 200 ms of requesting it). The following excerpt has been taken
+    from `mainSemPriorityInversion.c`*:*
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: This task is the primary focal point of this example, so make sure that you
+    have a solid understanding of the conditional statements around the semaphore
+    being taken within the specified period of time. The semaphore won't always be
+    taken in time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Task B (medium priority)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Task B periodically utilizes the CPU. The following excerpt has been taken
+    from `mainSemPriorityInversion.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: This task sleeps between 75 and 150 ticks (which doesn't consume CPU cycles)
+    and then performs a busy loop for a variable number of cycles using the `lookBusy()` function.
+    Note that `TaskB` is the medium priority task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Task C (low priority)
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Task C is responsible for blinking the blue LED, but only *after* the `semPtr` has
+    been taken (within 200 ms of requesting it). The following excerpt has been taken
+    from `mainSemPriorityInversion.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`TaskC()` is relying on the same semaphore as `TaskA()`. The only difference
+    is that `TaskC()` is blinking the blue LED to indicate the semaphore was taken
+    successfully.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the behavior
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using Ozone, load `Chapter8_semaphorePriorityInversion.elf` and start the processor.
+    Then, open SystemView and observe the runtime behavior, which will be analyzed
+    here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are a few key aspects to keep in mind when looking at this trace:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`TaskA` is the highest-priority task in the system. Ideally, if `TaskA` is
+    ready to run, it should be running. Because `TaskA` shares a resource with a lower-priority
+    task (`TaskC`), it will be delayed while `TaskC` is running (if `TaskC` is holding
+    the resource).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`TaskB` should not run when `TaskA`* could* run since `TaskA` has a higher
+    priority.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We''ve used the terminal output of SystemView (as well as turned on the red
+    LED) to provide a notification when either `TaskA` or `TaskC` has failed to acquire
+    `semPtr` in time:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here''s how this will look in SystemView:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/adf42c90-b716-439b-b1f0-cdc628b436ed.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The numbers in this graph line up with the theoretical example, so if you''ve
+    been following along closely, you may already know what to expect:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`TaskC` (the lowest-priority task in the system) acquires a binary semaphore
+    and starts to do some work (blinking the blue LED).'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Before `TaskC` completes its work, `TaskB` does some work.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The highest-priority task (`TaskA`) interrupts and attempts to acquire the same
+    semaphore, but is forced to wait because `TaskC` has already acquired the semaphore.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`TaskA` times out after 200 ms because `TaskC` didn''t have a chance to run
+    (the higher-priority task, `TaskB`, was running instead). It lights up the red
+    LED because of the failure.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The fact that the lower-priority task (`TaskB`) was running while a higher-priority
+    task was ready to run (`TaskA`) but waiting on a shared resource is called *priority
+    inversion*. This is a reason to avoid using semaphores to protect shared resources.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you look closely at the example code, you'll realize that a semaphore was
+    acquired and then the task holding the semaphore was put to sleep... DON'T EVER
+    DO THIS in a real system. Keep in mind that this is a contrived example *designed
+    to visibly fail.* See the *Using mutexes* section for more information on critical
+    sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Luckily, there is an RTOS primitive that has been *specifically designed* for
+    protecting shared resources, all while minimizing the effect of priority inversion
+    – the mutex.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using mutexes
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Mutex** stands for **mutual exclusion** – they are explicitly designed to
+    be used in situations where access to a shared resource should be mutually exclusive
+    – meaning the shared resource can only be used by one piece of code at a time.  At
+    their heart, mutexes are simply binary semaphores with one (very important) difference:
+    priority inheritance. In the previous example, we saw the highest-priority task
+    waiting on two lower-priority tasks to complete, which caused a priority inversion.
+    Mutexes address this issue with something called *priority inheritance*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When a higher-priority task attempts to take a mutex and is blocked, the scheduler
+    will elevate the priority of the task that holds the mutex to the same level as
+    the blocked task. This guarantees that the high-priority task will acquire the
+    mutex and run as soon as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Fixing priority inversion
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let's have another try at protecting the shared resource, but this time, we'll
+    use a mutex instead of a semaphore. Using a mutex should help *minimize *priority
+    inversion since it will effectively prevent the mid-priority task from running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'There are only two significant differences in this example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll use `xSemaphoreCreateMutex()` instead of `xSemaphoreCreateBinarySemaphore()`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: No initial `xSemaphoreGive()` call is required since the mutex will be initialized
+    with a value of 1\. Mutexes are designed to be taken only when needed and then
+    given back.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Here''s our updated example with the only significant change. This excerpt
+    can be found in `mainMutexExample.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are some additional name changes related to the `semPtr` to `mutexPtr` variable
+    name change, but there is nothing functionally different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the behavior
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Using Ozone, load `Chapter8_mutexExample.elf` and run the MCU. Here''s what
+    to expect when looking at the board:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You'll see double blinking green and blue LEDs. The LED blinks of each color
+    will not overlap one another, thanks to the mutex.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There will only be a few red LED blips every once in a while. This reduction
+    is caused by `TaskB` not being allowed to take priority over `TaskC` (and blocking
+    `TaskA`). This is a  lot better than before, but why are we still seeing red occasionally?
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'By opening SystemView, we''ll see something like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/8fb2b978-2760-4b89-a8b4-a28c3d4b0b09.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Looking through the terminal messages, you'll notice that `TaskA` – the highest-priority
+    task in the system – has never missed a mutex. This is what we expect since it
+    has priority over everything else in the system. Why does `TaskC` occasionally miss
+    a mutex (causing a red LED)?
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`TaskC` attempts to take the mutex, but it is being held by `TaskA`.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`TaskA` returns the mutex, but it is immediately taken again. This is caused
+    by a variable amount of delay in `TaskA` between calls to the mutex. When there
+    is no delay, `TaskC` isn''t allowed to run between when `TaskA` returns the mutex
+    and attempts to take it again. This is reasonable since `TaskA` has a higher priority
+    (though this might not be desirable in your system).'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`TaskC` times out, waiting for the mutex.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: So, we've improved our condition. `TaskA`, which is the highest-priority task,
+    isn't missing any mutexes any more. But what are some best practices to follow
+    when using mutexes? Read on to find out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Avoiding mutex acquisition failure
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: While mutexes *help* to provide protection against some priority inversion,
+    we can take an additional step to make sure the mutex doesn't become an unnecessary
+    crutch. The section of code that's protected by the mutex is referred to as a
+    *critical section:*
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Taking steps to ensure this critical section is as short as possible will help
+    in a few areas:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Less time in the critical section makes the shared data more available. The
+    less time a mutex is being held, the more likely it is that another task will
+    gain access in time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Minimizing the amount of time low priority tasks hold mutexes also minimizes
+    the amount of time they spend in an elevated priority (if they have a high priority).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If a low priority task is blocking a higher-priority task from running, the
+    high priority task will have more variability (also known as jitter) in how quickly
+    it is able to react to events.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Avoid the temptation to acquire a mutex at the beginning of a long function.
+    Instead, access data throughout the function and return the mutex before exiting:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code can be rewritten to minimize the critical section. This
+    still accomplishes the same goals as providing mutual exclusion for `protectedData`,
+    but the amount of time the mutex is held for is reduced:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding examples, there were no `else` statements listed in case the
+    action didn't complete in time. Remember, it is extremely important that the consequences
+    of a missed deadline are understood and that the appropriate action is taken.
+    If you *don't* have a good understanding of the required timing (and the consequences
+    of missing it), then it is time to get the team together for a discussion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have a basic understanding of mutexes, we'll take a look at how
+    they can be used to protect data that's being shared across multiple tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Avoiding race conditions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: So, when do we need to use mutexes and semaphores? Any time there is a shared
+    resource between multiple tasks, either a mutex or a semaphore should be used.
+    Standard binary semaphores *can* be used for resource protection, so in some special
+    cases (such as semaphores being accessed from ISRs), semaphores can be desirable.
+    However, you must understand how waiting on the semaphore will affect the system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll see an example of a semaphore being used to protect a shared resource
+    in [Chapter 10](dd741273-db9a-4e9a-a699-b4602e160b84.xhtml), *Drivers and ISRs.*
+  prefs: []
+  type: TYPE_NORMAL
+- en: We saw a mutex in action in the previous example, but what would it look like
+    if there was no mutex and we only wanted one of the blue or green LEDs to be on
+    at a time?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Failed shared resource example
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In our previous mutex example, the LEDs were the shared resource being protected
+    by the mutex. Only one LED was able to blink at a time – either green or blue.
+    It would perform the entire double blink before the next double blink.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's take a look at why this is important with a more realistic example. In
+    the real world, you'll often find shared data structures and hardware peripherals
+    among the most common resources that need to be protected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Accessing a data structure in an atomic fashion is very important when the
+    structure contains multiple pieces of data that must be correlated with one another.
+    An example would be a multi-axis accelerometer providing three readings for the
+    X, Y, and Z axes. In a high-speed environment, it is important for all three readings
+    to be correlated with one another to accurately determine the device''s movement
+    over time:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`Task1()` is responsible for updating the data in the structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'On the other hand, `Task2()` is responsible for reading the data from the structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If one of the readings isn''t properly correlated with the others, we''ll wind
+    up with an incorrect estimation of the device''s movement. `Task1` may be attempting
+    to update all three readings, but in the middle of gaining access, `Task2` comes
+    along and attempts to read the values. As a result, `Task2` receives an incorrect
+    representation of the data because it was in the middle of being updated:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/206b11b9-a073-439f-98d6-f2e84c1c2774.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Access to this data structure can be protected by putting all access to the
+    shared data inside a critical section. We can do this by wrapping access in a
+    mutex:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It is important to wrap the read accesses as well:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that data protection has been covered, we'll take another look at inter-task
+    synchronization. Semaphores were used for this previously, but what if your application
+    calls for actions to occur at a consistent rate? FreeRTOS software timers are
+    one possible solution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using software timers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Just like the name states, software timers are timers that are implemented
+    with software. In MCUs, it is extremely common to have many different hardware
+    peripheral timers available. These are often high resolution and have many different
+    modes and features that are used to offload work from the CPU. However, there
+    are two downsides to hardware timers:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since they are part of the MCU, you'll need to create an abstraction above them
+    to prevent your code from becoming tightly coupled to the underlying MCU hardware.
+    Different MCUs will have slightly different implementations for timers. Because
+    of this, it is easy for code to become dependent on the underlying hardware.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: They will generally take more development time to set up than using the software-based
+    timer that has already been provided by the RTOS.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Software timers alleviate this coupling by implementing multiple timer channels
+    via software, rather than hardware. So, instead of an application being dependent
+    on specific hardware, it can be used (without modification) on any platform the
+    RTOS supports, which is extremely convenient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are techniques we can use to reduce the firmware's tight coupling to the
+    underlying hardware. *[Chapter 12](8e78a49a-1bcd-4cfe-a88f-fb86a821c9c7.xhtml),
+    Tips on Creating Well Abstracted Architecture*, will outline some of the techniques
+    that can be used to eliminate the tight coupling between hardware and firmware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You may have noticed a task called `TmrSvc` in the SystemView screenshots.
+    This is the software timer service task. Software timers are implemented as a
+    FreeRTOS task, using many of the same underlying primitives that are available.
+    They have a few configuration options, all of which can be set in `FreeRTOSConfig.h`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: In order to have access to software timers, `configUSE_TIMERS` must be defined
+    as `1`. As shown in the preceding snippet, the priority of the timer task, as
+    well as the queue length (number of available timers) and stack depth, can all
+    be configured through `FreeRTOSConfig.h`
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*But software timers are a FreeRTOS feature – why do **I** need to worry about
+    stack depth?!*'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There''s one thing to keep in mind with software timers: *the code that''s
+    executed when the timer fires is executed inside the context of the Software Timer
+    Task.* This means two things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each callback function executes on the `TmrSvc` task's stack. Any RAM (that
+    is, local variables) that's used in the callback will come from the `TmrSvc` task.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Any long actions that are performed will block other software timers from running,
+    so treat the callback function you pass to the software timer similar to the way
+    you would an ISR – don't deliberately delay the task, and keep everything as short
+    as possible.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The best way to get familiar with software timers is to actually use them in
+    a real system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Setting up the code
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Let''s have a look at a few simple examples to see software timers in action.
+    There are two main ways of using software timers: oneshot and repeat.  We''ll
+    cover each with an example.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Oneshot timers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A *oneshot* is a timer that fires only *one* time. These types of timers are
+    common in both hardware and software and come in very handy when a fixed delay
+    is desired. A oneshot timer can be used when you wish to execute a *short* piece
+    of code after a fixed delay, without blocking the calling code by using `vTaskDelay()`.
+    To set up a oneshot timer, a timer callback must be specified and a timer created.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is an excerpt from `mainSoftwareTimers.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Declare a `Timer` callback function that can be passed to `xTimerCreate()`.
+    This callback is executed when the timer fires. Keep in mind that the callback
+    is executed within the timer task, so it needs to be non-blocking!
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Create a timer. Arguments define whether or not the timer is a oneshot or repeating
+    timer (repeating timers *auto-reload* in FreeRTOS).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Perform some due diligence checks to make sure the timer was created successfully
+    by checking that the handle is not `NULL`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Issue a call to `xTimerStart()` and ensure the `uxAutoReload` flag is set to
+    `false` (again, the prototype for `xTimerCreate()` is as follows):'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So, to create a *one-shot* timer, we need to set `uxAutoReload` to `false`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`oneShotCallBack()` will simply turn off the blue LED after 1 second has elapsed:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Remember that the code that is executing inside the software timer must be kept
+    short. All software timer callbacks are serialized (if one callback performs long
+    operations, it could potentially delay others from executing).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Repeat timers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Repeat timers are similar to oneshot timers, but instead of getting called only
+    *once*, they get called *repeatedly*. After a repeat timer has been started, its
+    callback will be executed repeatedly every `xTimerPeriod` ticks after being started.
+    Since repeat timers are executed within the `TmrSvc` task, they can provide a
+    lightweight alternative to tasks for short, non-blocking functions that need to
+    be run periodically. The same considerations regarding stack usage and execution
+    time apply to oneshot timers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The steps are essentially the same for repeat timers: just set the value of
+    the auto-reload flag to `pdTRUE`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s take a look at the code in `mainSoftwareTimers.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The repeating timer will toggle the green LED:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, a static variable is used for the `counter` variable
+    so that its value persists across function calls, while still hiding the variable
+    from all the code outside of the `repeatCallBack()` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the behavior
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Upon performing a reset, you'll see the blue LED turn on. To start the FreeRTOS
+    scheduler and the timers, push the blue *USER* button, *B1*, in the lower left
+    of the board. The blue LED will turn off after 2.2 seconds. This only happens
+    once since the blue LED has been set up as a oneshot timer.  The green LED toggles
+    every 500 ms since it was set up with a repeat timer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s take a look at the output of the SystemView terminal. In the terminal,
+    all the times are relative to the start of the RTOS scheduler. The blue LED oneshot
+    is only executed once, 2.2 seconds in, while the green LED is toggled every 500
+    ms:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/f8ef5719-e49e-42e7-b672-54d0d91c69c3.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'This same information is also available on the timeline. Note that the times
+    are relative to the cursor on the timeline; they are not absolute like they are
+    in the terminal:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/28b0dad1-ce2d-4327-a51a-1b8c833ba74f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Now that we know how to set up software timers and understand their behavior,
+    let's discuss when they can be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Software timer guidelines
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Software times can be really useful, especially since they're so easy to set
+    up. They are also fairly lightweight because of the way they have been coded in
+    FreeRTOS – they don't require significant code or CPU resources when used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Example use cases
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here are some use cases to help you out:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: To periodically perform an action (auto-reload mode). For example, a timer callback
+    function could give a semaphore to a reporting task to provide periodic updates
+    about the system.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To perform an event only once at some point in the future, without blocking
+    the calling task in the meantime (which would be required if `vTaskDelay()` was
+    used instead).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Considerations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Keep these considerations in mind:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The priority of the timer service task can be configured in `FreeRTOSConfig.h`
+    by setting `configTIMER_TASK_PRIORITY`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Timers can be modified after being created, restarted, and deleted.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Timers can be created statically (similar to static task creation) to avoid
+    dynamic allocation from the FreeRTOS heap.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All callbacks are executed in the Software Timer Service Task  – they must be
+    kept short and not block!
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Limitations
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'So, what''s not to love about software timers? Not too much, as long as the
+    following are kept in mind:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Jitter**: Since the callbacks are executed within the context of a task,
+    their exact execution time will depend on all the interrupts in the system, as
+    well as any higher-priority tasks. FreeRTOS allows this to be tuned by adjusting
+    the priority of the timer task being used (which must be balanced with the responsiveness
+    of other tasks in the system).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Single Priority**: All software timer callbacks execute inside the same task.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Resolution**: A software timer''s resolution is only as precise as the FreeRTOS
+    tick rate (defined as 1 ms for most ports).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If lower jitter or higher resolution is required, it probably makes sense to
+    use a hardware timer with ISRs instead of software timers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we covered many different aspects of synchronizing tasks and
+    protecting shared data between tasks. We also covered semaphores, mutexes, and
+    software timers. Then, we got our hands dirty by writing some code for each of
+    these types and took a deep dive into analyzing the code's behavior using our
+    Nucleo development board and SystemView.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now, you have some tools at your disposal for solving synchronization problems,
+    such as one task notifying another that an event has occurred (semaphores). This
+    means you're able to safely share data between tasks by properly wrapping access
+    in a mutex. You also know how to save a bit of RAM when performing simple operations,
+    that is, by using software timers for small periodic operations, instead of dedicated
+    tasks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we'll cover more crucial RTOS primitives that are used
+    for inter-task communication and provide the foundations for many RTOS-based applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Questions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'As we conclude this chapter, here is a list of questions for you to test your
+    knowledge regarding this chapter''s material. You will find the answers in the
+    *Assessments* section of the Appendix:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What are semaphores most useful for?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Why is it dangerous to use semaphores for data protection?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What does mutex stand for?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Why are mutexes better for protecting shared data?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: With an RTOS, there is no need for any other type of timer since many instances
+    of software timers are available.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'True'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'False'
+  prefs:
+  - PREF_IND
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A Microsoft paper that provides more detail on problems with semaphores: [https://www.microsoft.com/en-us/research/publication/implementing-condition-variables-with-semaphores/](https://www.microsoft.com/en-us/research/publication/implementing-condition-variables-with-semaphores/)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Phillip Koopman on race conditions: [http://course.ece.cmu.edu/~ece642/lectures/26_raceconditions.pdf](http://course.ece.cmu.edu/~ece642/lectures/26_raceconditions.pdf)'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

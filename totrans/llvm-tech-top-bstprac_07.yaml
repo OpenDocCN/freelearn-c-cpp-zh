@@ -1,0 +1,589 @@
+- en: '*Chapter 5*: Exploring Clang''s Architecture'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Clang** is LLVM''s official frontend for **C-family** programming languages,
+    including C, C++, and Objective-C. It processes the input source code (parsing,
+    type checking, and semantic reasoning, to name a few) and generates equivalent
+    LLVM IR code, which is then taken over by other LLVM subsystems to perform optimization
+    and native code generation. Many *C-like* dialects or language extensions also
+    find Clang easy to host their implementations. For example, Clang provides official
+    support for OpenCL, OpenMP, and CUDA C/C++. In addition to normal frontend jobs,
+    Clang has been evolving to partition its functionalities into libraries and modules
+    so that developers can use them to create all kinds of tools related to **source
+    code processing**; for example, code refactoring, code formatting, and syntax
+    highlighting. Learning Clang development can not only bring you more engagement
+    into the LLVM project but also open up a wide range of possibilities for creating
+    powerful applications and tools.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlike LLVM, which arranges most of its tasks into a single pipeline (that is,
+    **PassManager**) and runs them sequentially, there is more diversity in how Clang
+    organizes its subcomponents. In this chapter, we will show you a clear picture
+    of how Clang's important subsystems are organized, what their roles are, and which
+    part of the code base you should be looking for.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Terminology
+  prefs: []
+  type: TYPE_NORMAL
+- en: From this chapter through to the rest of this book, we will be using Clang (which
+    starts with an uppercase C and a Minion Pro font face) to refer to the *project*
+    and its *techniques* as a whole. Whenever we use `clang` (all in lowercase with
+    a Courier font face), we are referring to the *executable program*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following main topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning Clang's subsystems and their roles
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exploring Clang's tooling features and extension options
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By the end of this chapter, you will have a roadmap of this system so that you
+    can kickstart your own projects and have some gravity for later chapters related
+    to Clang development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In [*Chapter 1*](B14590_01_Final_JC_ePub.xhtml#_idTextAnchor014), *Saving Resources
+    When Building LLVM*, we showed you how to build LLVM. Those instructions, however,
+    did not build Clang. To include Clang in the build list, please edit the value
+    that''s been assigned to the `LLVM_ENABLE_PROJECTS` CMake variable, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The value of that variable should be a semi-colon-separated list, where each
+    item is one of LLVM's subprojects. In this case, we're including Clang and `clang-tools-extra`,
+    which contains a bunch of useful tools based on Clang's techniques. For example,
+    the `clang-format` tool is used by countless open source projects, especially
+    large-scale ones, to impose a unified coding style in their code base.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding Clang to an existing build
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you already have an LLVM build where Clang was not enabled, you can edit
+    the `LLVM_ENABLE_PROJECTS` CMake argument's value in `CMakeCache.txt` without
+    invoking the original CMake command again. CMake should reconfigure itself once
+    you've edited the file and run Ninja (or a build system of your choice) again.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can build `clang`, Clang''s driver, and the main program using the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You can run all the Clang tests using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, you should have the `clang` executable in the `/<your build directory>/bin`
+    folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning Clang's subsystems and their roles
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we will give you an overview of Clang's structures and organizations.
+    We will briefly introduce some of the important components or subsystems, before
+    using dedicated sections or chapters to expand them further in later parts of
+    this book. We hope this will give you some idea of Clang's internals and how they
+    will benefit your development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let''s look at the big picture. The following diagram shows the high-level
+    structure of Clang:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 5.1 – High-level structure of Clang'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_5.1_B14590.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 5.1 – High-level structure of Clang
+  prefs: []
+  type: TYPE_NORMAL
+- en: As explained in the legend, rectangles with rounded corners represent subsystems
+    that might consist of multiple components with similar functionalities. For example,
+    the **frontend** can be further dissected into components such as the preprocessor,
+    parser, and code generation logic, to name a few. In addition, there are intermediate
+    results, depicted as ovals in the preceding diagram. We are especially interested
+    in two of them – **Clang AST** and **LLVM IR**. The former will be discussed in
+    depth in [*Chapter 7*](B14590_07_Final_JC_ePub.xhtml#_idTextAnchor093), *Handling
+    AST*, while the latter is the main character of *Part 3*, *Middle-End Development*,
+    which will talk about optimizations and analyses you can apply to LLVM IR.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's start by looking at an overview of the driver. The following subsections
+    will give you a brief introduction to each of these driver components.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Driver
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A common misunderstanding is that `clang`, the executable, is the compiler frontend.
+    While `clang` does use Clang's frontend components, the executable itself is actually
+    a kind of program called a **compiler driver**, or **driver** for short.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Compiling source code is a complex process. First, it consists of multiple
+    phases, including the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Frontend**: Parsing and semantic checking'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Middle-end**: Program analysis and optimization'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Backend**: Native code generation'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Assembling**: Running the assembler'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Linking**: Running the linker'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Among these phases and their enclosing components, there are countless options/arguments
+    and flags, such as the option to tell compilers where to search for include files
+    (that is, the `-I` command-line option in GCC and Clang). Furthermore, we hope
+    that the compiler can figure out the values for some of these options. For example,
+    it would be great if the compiler could include some folders of C/C++ standard
+    libraries (for example, `/include` and `/usr/include` in Linux systems) in the
+    header file search paths *by default*, so that we don't need to assign each of
+    those folders manually in the command line. Continuing with this example, it's
+    clear that we want our compilers to be **portable** across different operating
+    systems and platforms, but many operating systems use a different C/C++ standard
+    library path. So, how do compilers pick the correct one accordingly?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this situation, a driver is designed to come to the rescue. It''s a piece
+    of software that acts as a housekeeper for core compiler components, serving them
+    essential information (for example, a OS-specific system include path, as we mentioned
+    earlier) and arranging their executions so that users only need to supply important
+    command-line arguments. A good way to observe the hard work of a driver is to
+    use the `-###` command-line flag on a normal `clang` invocation. For example,
+    you could try to compile a simple hello world program with that flag:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following is part of the output after running the preceding command on
+    a macOS computer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: These are essentially the flags being passed to the *real* Clang frontend after
+    the driver's *translation*. While you don't need to understand all these flags,
+    it's true that even for a simple program, the compilation flow consists of an
+    enormous amount of compiler options and many subcomponents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The source code for the driver can be found under `clang/lib/Driver`. In [*Chapter
+    8*](B14590_08_Final_JC_ePub.xhtml#_idTextAnchor108), *Working with Compiler Flags
+    and Toolchains*, we will look at this in more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Frontend
+  prefs: []
+  type: TYPE_NORMAL
+- en: A typical compiler textbook might tell you that a compiler frontend consists
+    of a **lexer** and a **parser**, which generates an **abstract syntax tree** (**AST**).
+    Clang's frontend also uses this skeleton, but with some major differences. First,
+    the lexer is usually coupled with the **preprocessor**, and the semantic analysis
+    that's performed on the source code is detached into a separate subsystem, called
+    the **Sema**. This builds an AST and does all kinds of semantic checking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Lexer and preprocessor
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Due to the complexity of programming language standards and the scale of real-world
+    source code, preprocessing becomes non-trivial. For example, resolving included
+    files becomes tricky when you have 10+ layers of a header file hierarchy, which
+    is common in large-scale projects. Advanced directives such as `#pragma` can be
+    challenged in cases where OpenMP uses `#pragma` to parallelize for loops. Solving
+    these challenges requires close cooperation between the preprocessor and the lexer,
+    which provides primitives for all the preprocessing actions. Their source code
+    can be found under `clang/lib/Lex`. In [*Chapter 6*](B14590_06_Final_JC_ePub.xhtml#_idTextAnchor078),
+    *Extending the Preprocessor*, you will become familiar with preprocessor and lexer
+    development, and learn how to implement custom logic with a powerful extension
+    system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Parser and Sema
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Clang's parser consumes token streams from the preprocessor and lexer and tries
+    to realize their semantic structures. Here, the Sema sub-system performs more
+    semantic checking and analysis from the parser's result before generating the
+    AST. Historically, there was another layer of abstraction where you could create
+    your own *parser action* callbacks to specify what actions you wanted to perform
+    when certain language directives (for example, identifiers such as variable names)
+    were parsed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Back then, Sema was one of these parser actions. However, later on, people found
+    that this additional layer of abstraction was not necessary, so the parser only
+    interacts with Sema nowadays. Nevertheless, Sema still retains this kind of callback-style
+    design. For example, the `clang::Sema::ActOnForStmt(…)` function (defined in `clang/lib/Sema/SemaStmt.cpp`)
+    will be invoked when a for loop structure is parsed. It will then do all kinds
+    of checking to make sure the syntax is correct and generate the AST node for the
+    for loop; that is, a `ForStmt` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: AST
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The AST is the most important primitive when it comes to extending Clang with
+    your custom logic. All the common Clang extensions/plugins that we will introduce
+    operate on an AST. To get a taste of AST, you can use the following command to
+    print out the an AST from the source code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For example, on my computer, I have used the following simple code, which only
+    contains one function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will yield the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: This command is pretty useful because it tells you the C++ AST class that represents
+    certain language directives, which is crucial for writing AST callbacks – the
+    core of many Clang plugins. For example, from the previous lines, we can know
+    that a variable reference site (`c` in the `c + 1` expression) is represented
+    by the `DeclRefExpr` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similar to how the parser was organized, you can register different kinds of
+    `ASTConsumer` instances to visit or manipulate the AST. **CodeGen**, which we
+    will introduce shortly, is one of them. In [*Chapter 7*](B14590_07_Final_JC_ePub.xhtml#_idTextAnchor093),
+    *Handling AST*, we will show you how to implement custom AST processing logic
+    using plugins.
+  prefs: []
+  type: TYPE_NORMAL
+- en: CodeGen
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Though there are no prescriptions for how you should process the AST (for example,
+    if you use the `-ast-dump` command-line option shown previously, the frontend
+    will print the textual AST representation), the most common task that's performed
+    by the CodeGen subsystem is emitting the LLVM IR code, which will later be compiled
+    into native assembly or object code by LLVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LLVM, assemblers, and linkers
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Once the LLVM IR code has been emitted by the CodeGen subsystem, it will be
+    processed by the LLVM compilation pipeline to generate native code, either assembly
+    code or object code. LLVM provides a framework called the **MC layer**, in which
+    architectures can choose to implement assemblers that have been directly integrated
+    into LLVM's pipeline. Major architectures such as x86 and ARM use this approach.
+    If you don't do this, any textual assembly code that's emitted at the end of LLVM's
+    pipeline needs to be processed by external assembler programs invoked by the driver.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite the fact that LLVM already has its own linker, known as the **LLD**
+    project, an *integrated* linker is still not a mature option yet. Therefore, external
+    linker programs are always invoked by the driver to link the object files and
+    generate the final binary artifacts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: External versus integrated
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using external assemblers or linkers means invoking a *separate process* to
+    run the program. For example, to run an external assembler, the frontend needs
+    to put assembly code into a temporary file before launching the assembler with
+    that file path as one of its command-line arguments. On the other hand, using
+    integrated assemblers/linkers means the functionalities of assembling or linking
+    are packaged into *libraries* rather than an executable. So, at the end of the
+    compilation pipeline, LLVM will call APIs to process the assembly code's *in-memory*
+    instances to emit object code. The advantage of this integrated approach is, of
+    course, saving many indirections (writing into temporary files and reading them
+    back right away). It also makes the code more concise to some extent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With that, you have been given an overview of a normal compilation flow, from
+    the source code all the way to the native code. In the next section, we will go
+    beyond the `clang` executable and provide an overview of the tooling and extension
+    options provided by Clang. This not only augments the functionalities of `clang`,
+    but also provides a way to use Clang's amazing techniques in out-of-tree projects.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exploring Clang's tooling features and extension options
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The Clang project contains not just the `clang` executable. It also provides
+    interfaces for developers to extend its tools, as well as to export its functionalities
+    as libraries. In this section, we will give you an overview of all these options.
+    Some of them will be covered in later chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are currently three kinds of tooling and extension options available
+    in Clang: `clang::FrontendAction` class.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The FrontendAction class
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the *Learning Clang''s subsystems and their roles* section, we went through
+    a variety of Clang''s frontend components, such as the preprocessor and Sema,
+    to name a few. Many of these important components are encapsulated by a single
+    data type, called `FrontendAction`. A `FrontendAction` instance can be treated
+    as a single task running inside the frontend. It provides a unified interface
+    for the task to consume and interact with various resources, such as input source
+    files and ASTs, which is similar to the role of an **LLVM Pass** from this perspective
+    (an LLVM Pass provides a unified interface to process LLVM IR). However, there
+    are some significant differences with an LLVM Pass:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not all of the frontend components are encapsulated into a `FrontendAction`,
+    such as the parser and Sema. They are standalone components that generate materials
+    (for example, the AST) for other FrontendActions to run.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Except for a few scenarios (the Clang plugin is one of them), a Clang compilation
+    instance rarely runs multiple FrontendActions. Normally, only one `FrontendAction`
+    will be executed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Generally speaking, a `FrontendAction` describes the task to be done at one
+    or two important places in the frontend. This explains why it's so important for
+    tooling or extension development – we're basically building our logic into a `FrontendAction`
+    (one of FrontendAction's derived classes, to be more precise) instance to control
+    and customize the behavior of a normal Clang compilation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To give you a feel for the `FrontendAction` module, here are some of its important
+    APIs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`FrontendAction::BeginSourceFileAction(…)/EndSourceFileAction(…)`: These are
+    callbacks that derived classes can override to perform actions right before processing
+    a source file and once it has been processed, respectively.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`FrontendAction::ExecuteAction(…)`: This callback describes the main actions
+    to do for this `FrontendAction`. Note that while no one stops you from overriding
+    this method directly, many of FrontendAction''s derived classes already provide
+    simpler interfaces to describe some common tasks. For example, if you want to
+    process an AST, you should inherit from `ASTFrontendAction` instead and leverage
+    its infrastructures.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`FrontendAction::CreateASTConsumer(…)`: This is a factory function that''s
+    used to create an `ASTConsumer` instance, which is a group of callbacks that will
+    be invoked by the frontend when it''s traversing different parts of the AST (for
+    example, a callback to be called when the frontend encounters a group of declarations).
+    Note that while the majority of FrontendActions work after the AST has been generated,
+    the AST might not be generated at all. This may happen if the user only wants
+    to run the preprocessor, for example (such as to dump the preprocessed content
+    using Clang''s `-E` command-line option). Thus, you don''t always need to implement
+    this function in your custom `FrontendAction`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Again, normally, you won't derive your class directly from `FrontendAction`,
+    but understanding FrontendAction's internal role in Clang and its interfaces can
+    give you more material to work with when it comes to tooling or plugin development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clang plugins
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: A Clang plugin allows you to dynamically register a new `FrontendAction` (more
+    specifically, an `ASTFrontendAction`) that can process the AST either before or
+    after, or even replace, the main action of `clang`. A real-world example can be
+    found in the `virtual` keyword has been placed on methods that should be virtual.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A plugin can be easily loaded into a normal `clang` by using simple command-line
+    options:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is really useful if you want to customize the compilation but have no control
+    over the `clang` executable (that is, you can't use a modified version of `clang`).
+    In addition, using the Clang plugin allows you to integrate with the build system
+    more tightly; for example, if you want to rerun your logic once the source files
+    or even arbitrary build dependencies have been modified. Since the Clang plugin
+    is still using `clang` as the driver and modern build systems are pretty good
+    at resolving normal compilation command dependencies, this can be done by making
+    a few compile flag tweaks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, the biggest downside of using the Clang plugin is its `clang` executable,
+    but only if the C++ APIs (and the ABI) are used by your plugin and the `clang`
+    executable matches it. Unfortunately, for now, Clang (and also the whole LLVM
+    project) has no intention to make any of its C++ APIs stable. In other words,
+    to take the safest path, you need to make sure both your plugin and `clang` are
+    using the *exact same* (major) version of LLVM. This issue makes the Clang plugin
+    pretty hard to be released standalone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We will look at this in more detail in [*Chapter 7*](B14590_07_Final_JC_ePub.xhtml#_idTextAnchor093),
+    *Handling AST*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: LibTooling and Clang Tools
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '`clang` executable. Also, the APIs are designed to be more high-level so that
+    you don''t need to deal with many of Clang''s internal details, making it more
+    friendly to non-Clang developers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Language server** is one of the most famous use cases of libTooling. A Language
+    server is launched as a daemon process and accepts requests from editors or IDEs.
+    These requests can be as simple as syntax checking a code snippet or complicated
+    tasks such as code completions. While a Language server does not need to compile
+    the incoming source code into native code as normal compilers do, it needs a way
+    to parse and analyze that code, which is non-trivial to build from scratch. libTooling
+    avoids the need to *recreate the wheels* in this case by taking Clang''s techniques
+    off-the-shelf and providing an easier interface for Language server developers.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To give you a more concrete idea of how libTooling differs from the Clang plugin,
+    here is a (simplified) code snippet for executing a custom `ASTFrontendAction`
+    called `MyCustomAction`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: As shown in the previous code, you can't just embed this code into *any* code
+    base. libTooling also provides lots of nice utilities, such as `CommonOptionsParser`,
+    which parses textual command-line options and transforms them into Clang options
+    for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: libTooling's API Stability
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unfortunately, libTooling doesn't provide stable C++ APIs either. Nevertheless,
+    this isn't a problem since you have full control over what LLVM version you're
+    using.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Last but not least, `clang-refactor` to refactor the code. This includes renaming
+    a variable, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If we want to rename the `Lat` member variable in the `Location` struct `Latitude`,
+    we can use the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Building clang-refactor
+  prefs: []
+  type: TYPE_NORMAL
+- en: Be sure to follow the instructions at the beginning of this chapter to include
+    `clang-tools-extra` in the list for the `LLVM_ENABLE_PROJECTS` CMake variable.
+    By doing this, you'll be able to build `clang-refactor` using the `ninja clang-refactor`
+    command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You will get the following output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is done by the refactoring framework built inside libTooling; `clang-refactor`
+    merely provides a command-line interface for it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we looked at how Clang is organized and the functionalities
+    of some of its important subsystems and components. Then, we learned about the
+    differences between Clang's major extension and tooling options – the Clang plugin,
+    libTooling, and Clang Tools – including what each of them looks like and what
+    their pros and cons are. The Clang plugin provides an easy way to insert custom
+    logic into Clang's compilation pipeline via dynamically loaded plugins but suffers
+    from API stability issues; libTooling has a different focus than the Clang plugin
+    in that it aims to provide a toolbox for developers to create a standalone tool;
+    and Clang Tools provides various applications.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will talk about preprocessor development. We will learn
+    how the preprocessor and the lexer work in Clang, and show you how to write plugins
+    for the sake of customizing preprocessing logic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here is a list of checks that are done by Chromium''s Clang plugin: [https://chromium.googlesource.com/chromium/src/tools/clang/+/refs/heads/master/plugins/FindBadConstructsAction.h](https://chromium.googlesource.com/chromium/src/tools/clang/+/refs/heads/master/plugins/FindBadConstructsAction.h).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'You can learn more about choosing the right Clang extension interface here:
+    [https://clang.llvm.org/docs/Tooling.html](https://clang.llvm.org/docs/Tooling.html).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'LLVM also has its own libTooling-based Language server, called `clangd`: [http://clangd.llvm.org](http://clangd.llvm.org).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

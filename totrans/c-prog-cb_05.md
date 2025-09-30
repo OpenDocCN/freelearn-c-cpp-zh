@@ -1,8 +1,0 @@
-# Section 2: Pointers and Files
-
-In this section, we will take a closer look at the use of pointers and the various implementations available to us for using pointers effectively in C. We will also look at various recipes to better understand and handle files and their contents.
-
-The following chapters will be covered in this section:
-
-*   [Chapter 4](e7568e63-9577-4ec3-b3d0-bc4d4fe9b71d.xhtml), *Deep Dive into Pointers*
-*   [Chapter 5](947d4b9d-0441-43af-86c1-270d385a9fd0.xhtml), *File Handling*

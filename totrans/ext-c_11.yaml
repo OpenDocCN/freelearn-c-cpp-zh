@@ -1,0 +1,1367 @@
+- en: Chapter 11
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: System Calls and Kernels
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we discussed the history of Unix and its onion-like
+    architecture. We also introduced and talked about the POSIX and SUS standards
+    governing the shell ring in Unix, before explaining how the C standard library
+    is there to provide common functionalities exposed by a Unix-compliant system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we are going to continue our discussion of the *system call
+    interface* and the Unix *kernel*. This will give us a complete insight into how
+    a Unix system works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After reading this chapter, you will be able to analyze the system calls a program
+    invokes, you will be able to explain how the process lives and evolves inside
+    the Unix environment, and you will also be able to use system calls directly or
+    through libc. We'll also talk about Unix kernel development and show you how you
+    can add a new system call to the Linux kernel and how it can be invoked from the
+    shell ring.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the last part of this chapter, we will talk about *monolithic* kernels and
+    *microkernels* and how they differ. We will introduce the Linux kernel as a monolithic
+    kernel, and we will write a *kernel module* for it that can be loaded and unloaded
+    dynamically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's start this chapter by talking about system calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: System calls
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we briefly explained what a system call is. In this
+    section, we want to take a deeper look and explain the mechanism that is used
+    behind system calls to transfer the execution from a user process to the kernel
+    process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, before we do that, we need to explain a bit more about both the kernel
+    space and the user space, because this will be beneficial in our understanding
+    of how the system calls work behind the scenes. We will also write a simple system
+    call to gain some ideas about kernel development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What we're about to do is crucial if you want to be able to write a new system
+    call when you're going to add a new functionality into the kernel that wasn't
+    there before. It also gives you a better understanding of the kernel space and
+    how it differs from the user space because, in reality, they are very different.
+  prefs: []
+  type: TYPE_NORMAL
+- en: System calls under the microscope
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we discussed in the previous chapter, a separation happens when moving from
+    the shell ring into the kernel ring. You find that whatever resides in the first
+    two rings, the user application and the shell, belongs to the user space. Likewise,
+    what ever appears in the kernel ring or the hardware ring belongs to the kernel
+    space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is one rule about this separation, and that is nothing in the two most
+    inner rings – kernel and hardware – can be accessed directly by the user space.
+    In other words, no processes in the user space can access the hardware, internal
+    kernel data structures, and algorithms directly. Instead, they should be accessed
+    via system calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That said you may think that it seems a little contradictory to whatever you
+    know and have experienced about Unix-like operating systems, such as Linux. If
+    you don't see the issue, let me explain it to you. It seems to be a contradiction
+    because, for instance, when a program reads some bytes from a network socket,
+    it is not the program that actually reads those bytes from the network adapter.
+    It is the kernel that reads the bytes and copies them to the user space, and then
+    the program can pick them up and use them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can clarify this by going through all the steps taken from the user space
+    to the kernel space and vice versa in an example. When you want to read a file
+    from a hard disk drive, you write a program in the user application ring. Your
+    program uses a libc I/O function called `fread` (or another similar function)
+    and will eventually be running as a process in the user space. When the program
+    makes a call to the `fread` function, the implementation behind libc gets triggered.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, everything is still in the user process. Then, the `fread` implementation
+    eventually invokes a system call, while `fread` is receiving an already opened
+    *file descriptor* as the first argument, the address of a buffer allocated in
+    the process's memory, which is in the user space, as the second argument, and
+    the length of the buffer as the third argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the system call is triggered by the libc implementation, the kernel gets
+    control of execution on behalf of the user process. It receives the arguments
+    from the user space and keeps them in the kernel space. Then, it is the kernel
+    that reads from the file by accessing the filesystem unit inside the kernel (as
+    can be seen in *Figure 10-5* in the previous chapter).
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the `read` operation is complete in the kernel ring, the read data will
+    be copied to the buffer in the user space, as specified by the second augment
+    when calling the `fread` function, and the system call leaves and returns the
+    control of execution to the user process. Meanwhile, the user process usually
+    waits while the system call is busy with the operation. In this case, the system
+    call is blocking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are some important things to note about this scenario:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We only have one kernel that performs all the logic behind system calls.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the system call is *blocking*, when that system call is in progress, the
+    caller user process has to wait while the system call is busy and has not finished.
+    Conversely, if the system call is *non-blocking*, the system call returns very
+    quickly, but the user process has to make extra system calls to check if the results
+    are available.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Arguments together with input and output data will be copied from/to user space.
+    Since the actual values are copied, system calls are supposed to be designed in
+    such a way that they accept tiny variables and pointers as input arguments.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The kernel has full privileged access to all resources of a system. Therefore,
+    there should be a mechanism to check if the user process is able to make such
+    a system call. In this scenario, if the user is not the owner of the file, `fread`
+    should fail with an error about the lack of required permissions.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A similar separation exists between the memory dedicated to the user space and
+    the kernel space. User processes can only access the user space memory. Multiple
+    transfers might be required in order to fulfil a certain system call.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Before we move onto the next section, I want to ask you a question. How does
+    a system call transfer the control of execution to the kernel? Take a minute to
+    think about that, because in the next section we're going to work on the answer
+    to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bypassing standard C – calling a system call directly
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Before answering the raised question, let's go through an example that bypasses
+    the standard C library and calls a system call directly. In other words, the program
+    calls a system call without going through the shell ring. As we have noted before,
+    this is considered an anti-pattern, but when certain system calls are not exposed
+    through libc, a user application can call the system calls directly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In every Unix system, there is a specific method for invoking system calls directly.
+    For example, in Linux, there is a function called `syscall` located in the `<sys/syscall.h>`
+    header file that can be used for this purpose.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code box, *example 11.1*, is a different Hello World example
+    that does not use libc to print to the standard output. In other words, the example
+    does not use the `printf` function that can be found as part of shell ring and
+    the POSIX standard. Instead, it invokes a specific system call directly, hence
+    the code is only compilable on Linux machines, not other Unix systems. In other
+    words, the code is not portable between various Unix flavors:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-1 [ExtremeC_examples_chapter11_1.c]: A different Hello World example
+    that invokes the write system call directly'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As the first statement in the preceding code box, we have to define `_GNU_SOURCE`
+    to indicate that we are going to use parts of the **GNU C Library** (**glibc**)
+    that are not part of POSIX, or SUS standards. This breaks the portability of the
+    program, and because of that, you may not be able to compile your code on another
+    Unix machine. In the second `include` statement, we include one of the glibc-specific
+    header files that doesn't exist in other POSIX systems using implementations other
+    than glibc as their main libc backbone.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the `main` function, we make a system call by calling the `syscall` function.
+    First of all, we have to specify the system call by passing a number. This is
+    an integer that refers to a specific system call. Every system call has its own
+    unique specific *system call number* in Linux.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the example code, the `__R_write` constant has been passed instead of the
+    system call number, and we don't know its exact numerical value. After looking
+    it up in the `unistd.h` header file, apparently 64 is the number of the `write`
+    system call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After passing the system call number, we should pass the arguments that are
+    required for the system call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that, despite the fact that the preceding code is very simple, and it just
+    contains a simple function call, you should know that `syscall` is not an ordinary
+    function. It is an assembly procedure that fills some proper CPU registers and
+    actually transfers the control of execution from the user space to the kernel
+    space. We will talk about this shortly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For `write`, we need to pass three arguments: the file descriptor, which here
+    is `1` to refer to the standard output; the second is the *pointer to a buffer*
+    allocated in the user space; and finally, the *length of bytes* that should be
+    copied from the buffer.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is the output of *example 11.1*, compiled and run in Ubuntu 18.04.1
+    using `gcc`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-1: The output of example 11.1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now it''s time to use `strace`, introduced in the previous chapter, to see
+    the actual system calls that *example 11.1* has invoked. The output of `strace`,
+    shown as follows, demonstrates that the program has invoked the desired system
+    call:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-2: The output of strace while running example 11.1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see as a bold in *Shell Box 11-2*, the system call has been recorded
+    by `strace`. Look at the return value, which is `13`. It means that the system
+    call has successfully written 13 bytes into the given file, the standard output
+    in this case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A user application should never try to use system calls directly. There are
+    usually steps that should be taken before and after calling the system call. Libc
+    implementations do these steps. When you're not going to use libc, you have to
+    do these steps yourself, and you must know that these steps vary from one Unix
+    system to another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inside the syscall function
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'However, what happens inside the `syscall` function? Note that the current
+    discussion is only applicable to glibc and not to the rest of the libc implementations.
+    Firstly, we need to find `syscall` in glibc. Here is the link to the `syscall`
+    [definition: https://github.com/lattera/glibc/blob/master/sysdeps/unix/sysv/linux/x86](https://github.com/lattera/glibc/blob/master/sysdeps/unix/sysv/linux/x86_64/syscall.S)_64/syscall.S.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you open the preceding link in a browser, you will see that this function
+    is written in assembly language.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Assembly language can be used together with C statements in a C source file.
+    In fact, this is one of the great features of C that makes it suitable for writing
+    an operating system. For the `syscall` function, we have a declaration written
+    in C, but the definition is in assembly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the source code you find as part of `syscall.S`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-2: The definition of the syscall function in glibc'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These instructions are short and simple despite the fact that making a system
+    call in this way seems to be more complex. The usage comment explains that a system
+    call in glibc can be provided up to six arguments in each invocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What this means is that if the underlying kernel supports system calls with
+    more than six arguments, glibc cannot provide certain kernel functionalities,
+    and it should be changed to support them. Fortunately, six arguments have been
+    fine in most cases, and for system calls that need more than six arguments, we
+    can pass pointers to structure variables allocated in the user space memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the preceding code box, after the `movq` instructions, the assembly code
+    calls the `syscall` subroutine. It simply generates an *interrupt*, which allows
+    a specific part of the kernel, which is waiting for such interrupts, to wake up
+    and handle the interrupt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see on the first line of the `syscall` procedure, the system call
+    number is moved to the `%rax` register. On the following lines, we are copying
+    other arguments into the different registers. When the system call interrupt is
+    fired, the kernel's interrupt handler unit picks up the call and gathers the system
+    call number and the arguments. Then it searches its *system call table* to find
+    the appropriate function that should be invoked on the kernel side.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An interesting point is that, by the time the interrupt handler is being executed
+    in the CPU, the user code that has initiated the system call has left the CPU,
+    and the kernel is doing the job. This is the main mechanism behind system calls.
+    When you initiate a system call, the CPU changes its mode, and the kernel instructions
+    are fetched into the CPU and the user space application is no longer being executed.
+    That's basically why we say that the kernel performs the logic behind the system
+    call on behalf of the user application.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we're going to give an example of this by writing a system
+    call that prints a hello message. It can be considered a progressive version of
+    *example 11.1* that accepts an input string and returns a greeting string.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add a system call to Linux
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we are going to add a new system call to the system call table
+    of an existing Unix-like kernel. This may be the first time that most of you reading
+    this book have written C code that is supposed to be run within the kernel space.
+    All of the past examples that we wrote in previous chapters, and almost all of
+    the codes that we will write in future chapters, run in the user space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In fact, most of the programs we write are meant to be running in the user space.
+    In fact, this is what we call *C programming* or *C development*. However, if
+    we are going to write a C program that is supposed to run in the kernel space,
+    we use a different name; we call it *kernel development*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We are going through the next example, *example 11.2*, but before that we need
+    to explore the kernel environment to see how it is different from the user space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kernel development
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This section will be beneficial to those of you who are seeking to be a kernel
+    developer or a security researcher in the field of operating systems. In the first
+    part, before jumping to the system call itself, we want to explain the differences
+    between the kernel development and the ordinary C development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The development of kernels is different from the development of ordinary C programs
+    in a number of ways. Before looking at the differences, one thing we should note
+    is that C development usually takes place in the user space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following list, we have provided six of the key differences between
+    the development efforts happening in the kernel and the user space:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is only one kernel process that runs everything. This simply means that
+    if your code causes a crash in the kernel, you probably need to reboot the machine
+    and let the kernel become initialized again. So, with the kernel process, the
+    development cost is very high, and you cannot try various solutions without rebooting
+    the machine, which you can do very easily for user space programs while working
+    on them. Upon a crash in the kernel, a *kernel crash dump* is generated, which
+    can be used to diagnose the cause.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the kernel ring, there is no C standard library like glibc! In other words,
+    this is a realm in which SUS and POSIX standards are no longer valid. So, you
+    cannot include any libc header files, such as `stdio.h` or `string.h`. In this
+    case, you have a dedicated set of functions that should be used for various operations.
+    These functions are usually located in *kernel headers* and can be different from
+    one Unix flavor to another because there is no standardization in this field.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As an example, if you are doing kernel development in Linux, you may use `printk`
+    to write a message into the kernel's *message buffer*. However, in FreeBSD, you
+    need to use the `printf` family of functions, which are different from the libc
+    `printf` functions. You will find these `printf` functions in the `<sys/system.h>`
+    header file in a FreeBSD system. The equivalent function while doing XNU kernel
+    development is `os_log`. Note that XNU is the kernel of macOS.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: You can read or modify files in the kernel, but not using libc functions. Each
+    Unix kernel has its own method of accessing files inside the kernel ring. This
+    is the same for all functionalities exposed through libc.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You have full access to the physical memory and many other services in the kernel
+    ring. So, writing secure and reliable code is very important.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: There is no system call mechanism in the kernel. System calls are the main user
+    space mechanism to enable user processes to communicate with the kernel ring.
+    So, once you're in the kernel, there is no need for it.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The kernel process is created by copying the kernel image into the physical
+    memory, performed by the *boot loader*. You cannot add a new system call without
+    having to create the kernel image from scratch and reload it again by rebooting
+    the system. In kernels that support *kernel modules*, you can easily add or remove
+    a module when the kernel is up and running, but you cannot do the same with system
+    calls.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: As you can see with the points we've just listed, kernel development takes place
+    in a different flow compared to the ordinary C development. Testing written logic
+    is not an easy task, and buggy code can cause a system crash.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we will do our first kernel development by adding a new
+    system call. We're doing this not because it's common to add a system call when
+    you want to introduce a new functionality into the kernel, but we're going to
+    give it a try in order to get familiar with kernel development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing a Hello World system call for Linux
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this section, we're going to write a new system call for Linux. There are
+    many great sources on the internet that explain how to add a system call to an
+    existing Linux kernel, but the following forum post, *Adding a Hello World System
+    Call to Linux Kernel* – available at https://medium.com/anubhav-shrimal/adding-a-hello-world-system-call-to-linux-kernel-dad32875872
+    – was used as the basis to build my own system call in Linux.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Example 11.2* is an advanced version of *example 11.1* that uses a different
+    and custom system call, which we are going to write in this section. The new system
+    call receives four arguments. The first two are for the input name and the second
+    two are for the greeting string output. Our system call accepts a name using its
+    first two arguments, one `char` pointer addressing an already allocated buffer
+    in the user space and one integer as the buffer''s length, and returns the greeting
+    string using its second two arguments, a pointer that is different from the input
+    buffer and is again allocated in the user space and another integer as its length.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**WARNING**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Please don't perform this experiment in a Linux installation that is supposed
+    to be used for work or home usage purposes. Run the following commands on an experimental
+    machine, which is strongly recommended to be a virtual machine. You can easily
+    create virtual machines by using emulator applications such as VirtualBox or VMware.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following instructions have the potential to corrupt your system and make
+    you lose part, if not all, of your data if they are used inappropriately or in
+    the wrong order. Always consider some backup solutions to make a copy of your
+    data if you're going to run the following commands on a none-experimental machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First of all, we need to download the latest source code of the Linux kernel.
+    We will use the Linux GitHub repository to clone its source code and then we will
+    pick a specific release. Version 5.3 was released on 15 September 2019, and so
+    we're going to use this version for this example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Linux is a kernel. It means that it can only be installed in the kernel ring
+    in a Unix-like operating system, but a *Linux distribution* is a different thing.
+    A Linux distribution has a specific version of the Linux kernel in its kernel
+    ring and a specific version of GNU libc and Bash (or GNU shell) in its shell ring.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each Linux distribution is usually shipped with a complete list of user applications
+    in its external rings. So, we can say a Linux distribution is a complete operating
+    system. Note that, *Linux distribution*, *Linux distro*, and *Linux flavor* all
+    refer to the same thing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, I'm using the Ubuntu 18.04.1 Linux distribution on a 64-bit
+    machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we start, it''s vital to make sure that the prerequisite packages are
+    installed by running the following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-3: Installing the prerequisite packages required for example 11.2'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Some notes about the preceding instructions: `apt` is the main package manager
+    in Debian-based Linux distributions, while `sudo` is a utility program that we
+    use to run a command in *superuser* mode. It is available on almost every Unix-like
+    operating system.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The next step is to clone the Linux GitHub repository. We also need to check
+    out the release 5.3 after cloning the repository. The version can be checked out
+    by using the release tag name, as you can see in the following commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-4: Cloning the Linux kernel and checking out version 5.3'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, if you look at the files in the root directory, you will see lots of files
+    and directories that combined build up the Linux kernel code base:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-5: The content of the Linux kernel code base'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you can see, there are directories that might seem familiar: `fs`, `mm`,
+    `net`, `arch`, and so on. I should point out that we are not going to give more
+    details on each of these directories as it can vary massively from a kernel to
+    another, but one common feature is that all kernels follow almost the same internal
+    structure.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we have the kernel source, we should begin to add our new Hello World
+    system call. However, before we do that, we need to choose a unique numerical
+    identifier for our system call; in this case, I give it the name `hello_world`,
+    and I choose `999` as its number.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Firstly, we need to add the system call function declaration to the end of
+    the `include/linux/syscalls.h` header file. After this modification, the file
+    should look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-3 [include/linux/syscalls.h]: Declaration of the new Hello World
+    system call'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The description at the top says that this is a header file that contains the
+    Linux `syscall` interfaces, which are not *architecture specific*. This means
+    that on all architectures, Linux exposes the same set of system calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the end of the file, we have declared our system call function, which accepts
+    four arguments. As we have explained before, the first two arguments are the input
+    string and its length, and the second two arguments are the output string and
+    its length.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that input arguments are `const`, but the output arguments are not. Additionally,
+    the `__user` identifier means that the pointers are pointing to memory addresses
+    within the user space. As you can see, every system call has an integer value
+    being returned as part of its function signature, which will actually be its execution
+    result. The range of returned values and their meanings is different from one
+    system call to another. In the case of our system call, `0` means success and
+    any other number is a failure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We now need to define our system call. To do this, we must first create a folder
+    named `hello_world` in the root directory, which we accomplish using the following
+    commands:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-6: Creating the hello_world directory'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we create a file named `sys_hello_world.c` inside the `hello_world` directory.
+    The contents of this file should be as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-4: The definition of the Hello World system call'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the *Code Box 11-4*, we have used the `SYSCALL_DEFINE4` macro to define our
+    function definition, with the `DEFINE4` suffix simply meaning that it accepts
+    four arguments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the beginning of the function body, we have declared two-character arrays
+    on the top of the kernel Stack. Much like ordinary processes, the kernel process
+    has an address space that contains a Stack. After we've achieved that, we copy
+    the data from the user space into the kernel space. Following that, we create
+    the greeting message by concatenating some strings. This string is still in the
+    kernel memory. Finally, we copy back the message to the user space and make it available
+    for the caller process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the case of errors, appropriate error numbers are returned in order to let
+    the caller process know about the result of the system call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next step to make our system call work is to update one more table. There
+    is only one system call table for both x86 and x64 architectures, and the newly
+    added system calls should be added to this table to become exposed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only after this step the system calls are available in x86 and x64 machines.
+    To add the system call to the table, we need to add `hello_word` and its function
+    name, `sys_hello_world`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To do this, open the `arch/x86/entry/syscalls/syscall_64.tbl` file and add
+    the following line to the end of the file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-5: Adding the newly added Hello World system call to the system
+    call table'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After the modification, the file should look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-7: Hello World system call added to the system call table'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note the `__x64_` prefix in the name of the system call. This is an indication
+    that the system call is only exposed in x64 systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Linux kernel uses the Make build system to compile all the source files
+    and build the final kernel image. Moving on, you must make a file named `Makefile`
+    in the `hello_world` directory. Its content, which is a single line of text, should
+    be the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-6: Makefile of the Hello World system call'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, you need to add `hello_world` directory to the main `Makefile` in the
+    root directory. Change to the kernel''s root directory, open the `Makefile` file,
+    and find the following line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-7: The target line that should be modified in the root Makefile'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Add `hello_world/` to this list. All of these directories are simply the directories
+    that should be built as part of the kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We need to add the directory of the Hello World system call in order to include
+    it in the build process and have it included in the final kernel image. The line
+    should look like the following code after the modification:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-8: The target line after modification'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next step is to build the kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Building the kernel
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: To build the kernel, we must first go back to the kernel's root directory because
+    before we start to build the kernel, you need to provide a configuration. A configuration
+    has a list of features and units that should be built as part of the build process.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following command tries to make the target configuration based on the current
+    Linux kernel''s configuration. It uses the existing values in your kernel and
+    asks you about confirmation if a newer configuration value exists in the kernel
+    we are trying to build. If it does, you can simply accept all newer versions by
+    just pressing the `Enter` key:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-8: Creating a kernel configuration based on the current running
+    kernel'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now you can start the build process. Since the Linux kernel contains a lot of
+    source files, the build can take hours to complete. Therefore, we need to run
+    the compilations in parallel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you''re using a virtual machine, please configure your machine to have more
+    than one core in order to have an effective boost in the build process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-9: Output of the kernel build. Please note the line indicating
+    the compilation of the Hello World system call'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Make sure that you have installed the prerequisite packages introduced in the
+    very first part of this section; otherwise, you will get compilation errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you can see, the build process has started with four jobs trying to compile
+    C files in parallel. You need to wait for it to complete. When it''s finished,
+    you can easily install the new kernel and reboot the machine:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-10: Creating and installing the new kernel image'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you can see, a new kernel image for the version 5.3.0 has been created and
+    installed. Now we ''re ready to reboot the system. Don''t forget to check the
+    current kernel''s version before rebooting if you don''t know it. In my case,
+    my version is `4.15.0-36-generic`. I''ve used the following commands to find it
+    out:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-11: Checking the version of the currently installed kernel'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, reboot the system using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-12: Rebooting the system'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'While the system is booting up, the new kernel image will be picked up and
+    used. Note that boot loaders won''t pick up the older kernels; therefore, if you''ve
+    had a kernel with version above 5.3, you are going to need to load the built kernel
+    image manually. This link can help you with that: https://askubuntu.com/questions/82140/how-can-i-boot-with-an-older-kernel-version.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When the operating system boot is complete, you should have the new kernel
+    running. Check the version. It must look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-13: Checking the kernel version after the reboot.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If everything has gone well, the new kernel should be in place. Now we can
+    continue to write a C program that invokes our newly added Hello World system
+    call. It will be very similar to *example 11.1*, that called the `write` system
+    call. You can find *example 11.2* next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-9 [ExtremeC_examples_chapter11_2.c]: Example 11.2 invoking the
+    newly added Hello World system call'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, we have invoked the system call with the number `999`. We pass
+    `Kam` as the input, and we expect to receive `Hello Kam!` as the greeting message.
+    The program waits for the result and prints the message buffer that is filled
+    by the system call in the kernel space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following code, we build and run the example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-14: Compiling and running example 11.2'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After running the example, and if you look at the kernel logs using the `dmesg`
+    command, you will see the generated logs using `printk`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-15: Using dmesg to see the logs generated by the Hello World system
+    call'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you run *example 11.2* with `strace`, you can see that it actually calls
+    system call `999`. You can see it in the line starting with `syscall_0x3e7(...)`.
+    Note that `0x3e7` is the hexadecimal value for 999:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-16: Monitoring the system calls made by example 11.2'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In *Shell Box 11-16*, you can see that `syscall_0x3e7` has been called and
+    `0` has been returned. If you change the code in *example 11.2* to pass a name
+    with more than 64 bytes, you will receive an error. Let''s change the example
+    and run it again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-10: Passing a long message (more than 64 bytes) to our Hello World
+    system call'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s compile and run it again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-17: Compiling and running example 11.2 after the modification'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you see, the system call returns `-1` based on the logic we have written
+    for it. Running with `strace` also shows that system call has returned `-1`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-18: Monitoring the system calls made by example 11.2 after the
+    modification'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we talk about the approaches we can take in designing kernels.
+    As part of our discussion, we introduce the kernel modules and explore how they
+    are used in kernel development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unix kernels
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we are going to talk about the architectures that Unix kernels
+    have been developed with throughout the last 30 years. Before talking about the
+    different types of kernels, and there are not very many, we should know that there
+    is no standardization about the way a kernel should be designed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The best practices that we have obtained are based on our experiences over the
+    years, and they have led us to a high-level picture of the internal units in a
+    Unix kernel, which results in illustrations such as *Figure 10-5* in the previous
+    chapter. Therefore, each kernel is somewhat different in comparison to another.
+    The main thing that all of them have in common is that they should expose their
+    functionalities through a system call interface. However, every kernel has its
+    own way of handling system calls.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This variety and the debates around it have made it one of the hottest computer
+    architecture-related topics of the 1990s, with large groups of people taking part
+    in these debates – the *Tanenbaum-Torvalds* debate being considered the most famous one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are not going to go into the details of these debates, but we want to talk
+    a bit about the two major dominant architectures for designing a Unix kernel:
+    *monolithic* and *microkernel*. There are still other architectures, such as *hybrid
+    kernels*, *nanokernels*, and *exokernels*, all of which have their own specific
+    usages.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We, however, are going to focus on monolithic kernels and microkernels by creating
+    a comparison so that we can learn about their characteristics.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Monolithic kernels versus microkernels
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the previous chapter where we looked at Unix architecture, we described the
+    kernel as a single process containing many units, but in reality, we were actually
+    talking about a monolithic kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A monolithic kernel is made up of one kernel process with one address space
+    that contains multiple smaller units within the same process. Microkernels take
+    the opposite approach. A microkernel is a minimal kernel process that tries to
+    push out services such as filesystem, device drivers, and process management to
+    the user space in order to make the kernel process smaller and thinner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both of these architectures have advantages and disadvantages, and as a result,
+    they've been the topic of one of the most famous debates in the history of operating
+    systems. It goes back to 1992, just after the release of the first version of
+    Linux. A debate was started on *Usenet* by a post written by **Andrew S. Tanenbaum**.
+    The debate is known as the Tanenbaum-Torvalds debate. You can read more at https://en.wikipedia.org/wiki/Tanenbaum–Torvalds_debate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That post was the starting point for a flame war between the Linux creator **Linus
+    Torvalds** and Tanenbaum and a bunch of other enthusiasts, who later became the
+    first Linux developers. They were debating the nature of monolithic kernels and
+    microkernels. Many different aspects of kernel design and the influence of hardware
+    architecture on kernel design were discussed as part of this flame war.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further discussion of the debates and topics described would be lengthy and
+    complex and therefore beyond the scope of this book, but we want to compare these
+    two approaches and let you get familiar with the advantages and disadvantages
+    of each approach.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following is a list of differences between monolithic kernels and microkernels:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A monolithic kernel is made up of a single process containing all the services
+    provided by the kernel. Most early Unix kernels were developed like this, and
+    it is considered to be an old approach. Microkernels are different because they
+    have separate processes for every service the kernel offers.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A monolithic kernel process resides in the kernel space, whereas the *server
+    processes* in a microkernel are usually in the user space. Server processes are
+    those processes that provide the kernel's functionalities, such as memory management,
+    filesystem, and so on. Microkernels are different in that they let server processes
+    be in the user space. This means some operating systems are more microkernel-like
+    than the others.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Monolithic kernels are usually faster. That's because all kernel services are
+    performed inside the kernel process, but microkernels need to do some *message
+    passing* between the user space and the kernel space, hence more system calls
+    and context switches.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In a monolithic kernel, all device drivers are loaded into the kernel. Therefore,
+    device drivers written by third-party vendors will be run as a part of the kernel.
+    Any flaw in any device driver or any other unit inside the kernel may lead to
+    a kernel crash. This is not the case with microkernels because all of the device
+    drivers and many other units are run in the user space, which we could hypothesize
+    as the reason why monolithic kernels are not used in mission-critical projects.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In monolithic kernels, injecting a small piece of malicious code is enough to
+    compromise the whole kernel, and subsequently the whole system. However, this
+    can't happen easily in a microkernel because many server processes are in the
+    user space, and only a minimal set of critical functionalities are concentrated
+    in the kernel space.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In a monolithic kernel, even a simple change to the kernel source needs the
+    whole kernel to be compiled again, and a new kernel image should be generated.
+    Loading the new image also requires the machine to be rebooted. But changes in
+    a microkernel can lead to a compilation of only a specific server process, and
+    probably loading the new functionality without rebooting the system. In monolithic
+    kernels, a similar functionality can be obtained to some extent using kernel modules.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: MINIX is one of the best-known examples of microkernels. It was written by Andrew
+    S. Tanenbaum and was initiated as an educational operating system. Linus Torvalds
+    used MINIX as his development environment to write his own kernel, called Linux,
+    in 1991 for the 80386 microprocessor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As Linux has been the biggest and most successful defender of monolithic kernels
+    for nearly 30 years, we're going to talk more about Linux in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Linux
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: You've already been introduced to the Linux kernel in the previous section of
+    this chapter, when we were developing a new system call for it. In this section,
+    we want to focus a bit more on the fact that Linux is monolithic and that every
+    kernel functionality is inside the kernel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, there should be a way to add a new functionality to the kernel without
+    needing it to be recompiled. New functionalities cannot be added to the kernel
+    as new system calls simply because, as you saw, by adding a new system call, many
+    fundamental files need to be changed, and this means we need to recompile the
+    kernel in order to have the new functionalities.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The new approach is different. In this technique, kernel modules are written
+    and plugged into the kernel dynamically, which we will discuss in the first section,
+    before moving on to writing a kernel module for Linux.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kernel modules
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Monolithic kernels are usually equipped with another facility that enables kernel
+    developers to hot-plug new functionalities into an up-and-running kernel. These
+    pluggable units are called kernel modules. These are not the same as server processes
+    in microkernels.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlike server processes in a microkernel, which are in fact separate processes
+    using IPC techniques to communicate with each other, kernel modules are *kernel
+    object files* that are already compiled and can be loaded dynamically into the
+    kernel process. These kernel object files can either become statically built as
+    part of the kernel image or become loaded dynamically when the kernel is up and
+    running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the kernel object files are twin concepts to the ordinary object files
+    produced in C development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It's worth noting again that if the kernel module does something bad inside
+    the kernel, a *kernel crash* can happen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The way you communicate with kernel modules is different from system calls,
+    and they cannot be used by calling a function or using a given API. Generally,
+    there are three ways to communicate with a kernel module in Linux and some similar
+    operating systems:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Device files in the /dev directory**: Kernel modules are mainly developed
+    to be used by device drivers, and that''s why devices are the most common way
+    to communicate with kernel modules. As we explained in the previous chapter, devices
+    are accessible as device files located in the `/dev` directory. You can read from
+    and write to these files and, using them, you can send and receive data to/from
+    the modules.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Entries in procfs**: Entries in the `/proc` directory can be used to read
+    meta-information about a specific kernel module. These files can also be used
+    to pass meta-information or control commands to a kernel module. We shortly demonstrate
+    the usage of procfs in the next example, *example 11.3*, as part of the following
+    section.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Entries in sysfs**: This is another filesystem in Linux that allows scripts
+    and users to control user processes and other kernel-related units, such as kernel
+    modules. It can be considered as a new version of procfs.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In fact, the best way to see a kernel module is to write one, which is what
+    we are going to do in the next section, where we write a Hello World kernel module
+    for Linux. Note that kernel modules are not limited to Linux; monolithic kernels
+    such as FreeBSD also benefit from the kernel module mechanism.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding a kernel module to Linux
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In this section, we are going to write a new kernel module for Linux. This is
+    the Hello World kernel module, which creates an entry in procfs. Then, using this
+    entry, we read the greeting string.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, you will become familiar with writing a kernel module, compiling
+    it, loading it into the kernel, unloading it from the kernel, and reading data
+    from a procfs entry. The main purpose of this example is to get your hands dirty
+    with writing a kernel module and, as a result more development can be done by
+    yourself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kernel modules are compiled into kernel object files that can be loaded directly
+    into the kernel at run-time. There is no need to reboot the system after loading
+    the kernel module object file as long as it doesn't do something bad in the kernel
+    that leads to a kernel crash. That's also true for unloading the kernel module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first step is to create a directory that is supposed to contain all files
+    related to the kernel module. We name it `ex11_3` since this is the third example
+    in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-19: Making the root directory for example 11.3'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, create a file named `hwkm.c`, which is just an acronym made up of the
+    first letters of "Hello World Kernel Module," with the following content:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-11 [ex11_3/hwkm.c]: The Hello World kernel module'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using the two last statements in *Code Box 11-11*, we have registered the module's
+    initialization and exit callbacks. These functions are called when the module
+    is being loaded and unloaded respectively. The initialization callback is the
+    first code to be executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see inside the `hwkm_init` function, it creates a file named `hwkm`
+    inside the `/proc` directory. There is also an exit callback. Inside the `hwkm_exit`
+    function, it removes the `hwkm` file from the `/proc` path. The `/proc/hwkm` file
+    is the contact point for the user space to be able to communicate with the kernel
+    module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `proc_file_read` function is the read callback function. This function is
+    called when the user space tries to read the `/proc/hwkm` file. As you will soon
+    see, we use the `cat` utility program to read the file. It simply copies the `Hello
+    World From Kernel Module!` string to the user space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that at this stage, the code written inside a kernel module has total access
+    to almost anything inside the kernel, and it can leak out any kind of information
+    to the user space. This is a major security issue, and further reading about the
+    best practices for writing a secure kernel module should be undertaken.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To compile the preceding code, we need to use an appropriate compiler, including
+    possibly linking it with the appropriate libraries. In order to make life easier,
+    we create a file named `Makefile` that will trigger the necessary build tools
+    in order to build the kernel module.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code box shows the content of the `Makefile`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 11-12: Makefile of the Hello World kernel module'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, we can run the `make` command. The following shell box demonstrates this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-20: Building the Hello World kernel module'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, the compiler compiles the code and produces an object file.
+    Then, it continues by linking the object file with other libraries to create a
+    `.ko` file. Now, if you look at the generated files, you find a file named `hwkm.ko`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Notice the `.ko` extension, which simply means that the output file is a kernel
+    object file. It is something like a shared library that can be dynamically loaded
+    into the kernel and become running.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Please note that in *Shell Box 11-20*, the build process has produced a warning
+    message. It says that the module has no license associated with it. It is a highly
+    recommended practice to generate licensed modules when developing or deploying
+    kernel modules in test and production environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following shell box shows the list of files that can be found after building
+    the kernel module:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-21: List of existing files after building the Hello World kernel
+    module'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We have used module build tools from Linux kernel version 5.3.0 You might get
+    a compilation error if you compile this example using a kernel version below 3.10.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To load the `hwkm` kernel module, we use the `insmod` command in Linux, which
+    simply loads and installs the kernel module, as we have done in the following
+    shell box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-22: Loading and installing the Hello World kernel module'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, if you look at the kernel logs, you will see the lines that are produced
+    by the initializer function. Just use the `dmesg` command to see the latest kernel
+    logs, which is what we have done next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-23: Checking the kernel log messages after installing the kernel
+    module'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, the module has been loaded, and the `/proc/hwkm` file should have been
+    created. We can read it now by using the `cat` command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-24: Reading the/proc/hwkm file using cat'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see in the preceding shell box, we have read the file twice, and
+    both times, it returns the same `Hello World From Kernel Module!` string. Note
+    that the string is copied into the user space by the kernel module, and the `cat`
+    program has just printed it to the standard output.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When it comes to unloading the module, we can use the `rmmod` command in Linux,
+    as we have done next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-25: Unloading the Hello World kernel module'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that the module has been unloaded, look at the kernel logs again to see
+    the goodbye message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 11-26: Checking the kernel log messages after unloading the kernel
+    module'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you saw in the preceding example, kernel modules are very handy when it comes
+    to writing kernel codes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To finish off this chapter, I believe it would be helpful to give you a list
+    of the features that we have seen so far regarding kernel modules:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Kernel modules can be loaded and unloaded without needing to reboot the machine.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: When loaded, they become part of the kernel and can access any unit or structure
+    within the kernel. This can be thought of as a vulnerability, but a Linux kernel
+    can be protected against installing unwanted modules.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the case of kernel modules, you only need to compile their source code. But
+    for system calls, you have to compile the whole kernel, which can easily take
+    an hour of your time.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finally, kernel modules can be handy when you are going to develop a code that
+    needs to be run within the kernel behind a system call. The logic that is going
+    to be exposed using a system call can be loaded into the kernel using a kernel
+    module first, and after being developed and tested properly, it can go behind
+    a real system call.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing system calls from scratch can be a tedious job because you have to reboot
+    your machine countless times. Having the logic firstly written and tested as part
+    of a kernel module can ease the pain of kernel development. Note that if your
+    code is trying to cause a kernel crash, it doesn't matter if it is in a kernel
+    module or behind a system call; it causes a kernel crash and you must reboot your
+    machine.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we talked about various types of kernels. We also showed how
+    a kernel module can be used within a monolithic kernel to have transient kernel
+    logic by loading and unloading it dynamically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We''ve now completed our two-chapter discussion about Unix. In this chapter,
+    we learned about the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What a system call is and how it exposes a certain functionality
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What happens behind the invocation of a system call
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How a certain system call can be invoked from C code directly
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to add a new system call to an existing Unix-like kernel (Linux) and how
+    to recompile the kernel
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: What a monolithic kernel is and how it differs from a microkernel
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How kernel modules work within a monolithic kernel and how to write a new kernel
+    module for Linux
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the following chapter, we're going to talk about the C standards and the
+    most recent version of C, C18\. You will become familiar with the new features
+    introduced as part of it.
+  prefs: []
+  type: TYPE_NORMAL

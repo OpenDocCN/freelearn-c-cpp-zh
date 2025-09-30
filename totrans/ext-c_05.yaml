@@ -1,0 +1,1656 @@
+- en: Chapter 05
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Stack and Heap
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the previous chapter, we ran an investigation of the memory layout of a
+    running process. System programming without knowing enough about the memory structure
+    and its various segments is like doing surgery without knowing the anatomy of
+    the human body. The previous chapter just gave us the basic information regarding
+    the different segments in the process memory layout, but this chapter wants us
+    to just focus on the most frequently used segments: Stack and Heap.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a programmer, you are mostly busy working with Stack and Heap segments. Other
+    segments such as Data or BSS are less in use, or you have less control over them.
+    That's basically because of the fact that the Data and BSS segments are generated
+    by the compiler, and usually, they take up a small percentage of the whole memory
+    of a process during its lifetime. This doesn't mean that they are not important,
+    and, in fact, there are issues that directly relate to these segments. But as
+    you are spending most of your time with Stack and Heap, most memory issues have
+    roots in these segments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As part of this chapter, you will learn:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to probe the Stack segment and the tools you need for this purpose
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How memory management is done automatically for the Stack segment
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The various characteristics of the stack segment
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The guidelines and best practices on how to use the Stack segment
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to probe the Heap segment
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to allocate and deallocate a Heap memory block
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The guidelines and best practices regarding the usage of the Heap segment
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Memory-constrained environments and tuning memory in performant environments
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let's begin our quest by discussing the Stack segment in more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stack
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A process can continue working without the Heap segment but not without the
+    Stack segment. This says a lot. The Stack is the main part of the process metabolism,
+    and it cannot continue execution without it. The reason is hiding behind the mechanism
+    driving the function calls. As briefly explained in the previous chapter, calling
+    a function can only be done by using the Stack segment. Without a Stack segment,
+    no function call can be made, and this means no execution at all.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With that said, the Stack segment and its contents are engineered carefully
+    to result in the healthy execution of the process. Therefore, messing with the
+    Stack content can disrupt the execution and halt the process. Allocation from
+    the Stack segment is fast, and it doesn't need any special function call. More
+    than that, the deallocation and all memory management tasks happen automatically.
+    All these facts are all very tempting and encourage you to overuse the Stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You should be careful about this. Using the Stack segment brings its own complications.
+    The stack is not very big, therefore you cannot store large objects in it. In
+    addition, incorrect use of the Stack content can halt the execution and result
+    in a crash. The following piece of code demonstrates this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-1: A buffer overflow situation. The strcpy function will overwrite
+    the content of the Stack'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When running the preceding code, the program will most likely crash. That's
+    because the `strcpy` is overwriting the content of the Stack, or as it is commonly
+    termed, *smashing* the stack. As you see in *Code Box 5-1*, the `str` array has
+    `10` characters, but the `strcpy` is writing way more than 10 characters to the
+    `str` array. As you will see shortly, this effectively writes on the previously
+    pushed variables and stack frames, and the program jumps to a wrong instruction
+    after returning from the `main` function. And this eventually makes it impossible
+    to continue the execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: I hope that the preceding example has helped you to appreciate the delicacy
+    of the Stack segment. In the first half of this chapter, we are going to have
+    a deeper look into the Stack and examine it closely. We first start by probing
+    into the Stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Probing the Stack
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Before knowing more about the Stack, we need to be able to read and, probably,
+    modify it. As stated in the previous chapter, the Stack segment is a private memory
+    that only the owner process has the right to read and modify. If we are going
+    to read the Stack or change it, we need to become part of the process owning the Stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This is where a new set of tools come in: *debuggers*. A debugger is a program
+    that attaches to another process in order to *debug* it. One of the usual tasks
+    while debugging a process is to observe and manipulate the various memory segments.
+    Only when debugging a process are we able to read and modify the private memory
+    blocks. The other thing that can be done as part of debugging is to control the
+    order of the execution of the program instructions. We give examples on how to
+    do these tasks using a debugger shortly, as part of this section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s start with an example. In *example 5.1*, we show how to compile a program
+    and make it ready for debugging. Then, we demonstrate how to use `gdb`, the GNU
+    debugger, to run the program and read the Stack memory. This example declares
+    a character array allocated on top of the Stack and populates its elements with
+    some characters, as can be seen in the following code box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-2 [ExtremeC_examples_chapter5_1.c]: Declaration of an array allocated
+    on top of the Stack'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The program is simple and easy to follow, but the things that are happening
+    inside the memory are interesting. First of all, the memory required for the `arr`
+    array is allocated from the Stack simply because it is not allocated from the
+    Heap segment and we didn't use the `malloc` function. Remember, the Stack segment
+    is the default place for allocating variables and arrays.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to have some memory allocated from the Heap, one should acquire it
+    by calling `malloc` or other similar functions, such as `calloc`. Otherwise, the
+    memory is allocated from the Stack, and more precisely, on top of the Stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to be able to debug a program, the binary must be built for debugging
+    purposes. This means that we have to tell the compiler that we want a binary that
+    contains *debug* *symbols*. These symbols will be used to find the code lines
+    that have been executing or those that caused a crash. Let's compile *example
+    5.1* and create an executable object file that contains debugging symbols.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we build the example. We''re doing our compilation in a Linux environment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-1: Compiling the example 5.1 with debug option -g'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `-g` option tells the compiler that the final executable object file must
+    contain the debugging information. The size of the binary is also different when
+    you compile the source with and without the debug option. Next, you can see the
+    difference between the sizes of the two executable object files, the first one
+    built without the `-g` option and the second one with the `-g` option:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-2: The size of the output executable object file with and without
+    the -g option'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that we have an executable file containing the debug symbols, we can use
+    the debugger to run the program. In this example, we are going to use `gdb` for
+    debugging *example 5.1*. Next, you can find the command to start the debugger:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-3: Starting the debugger for the example 5.1'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`gdb` is usually installed as part of the `build-essentials` package on Linux
+    systems. In macOS systems, it can be installed using the `brew` package manager
+    like this: `brew install gdb`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After running the debugger, the output will be something similar to the following
+    shell box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-4: The output of the debugger after getting started'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you may have noticed, I''ve run the preceding command on a Linux machine.
+    `gdb` has a command-line interface that allows you to issue debugging commands.
+    Enter the `r` (or `run`) command in order to execute the executable object file,
+    specified as an input to the debugger. The following shell box shows how the `run` command
+    executes the program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-5: The output of the debugger after issuing the run command'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the preceding shell box, after issuing the `run` command, `gdb` has started
+    the process, attached to it, and let the program execute its instructions and
+    exit. It did not interrupt the program because we have not set a *breakpoint*.
+    A breakpoint is an indicator that tells `gdb` to pause the program execution and
+    wait for further instructions. You can have as many breakpoints as you want.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Next, we set a breakpoint on the `main` function using the `b` (or `break`)
+    command. After setting the breakpoint, `gdb` pauses the execution when the program
+    enters the `main` function. You can see how to set a breakpoint on the `main`
+    function in the following shell box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-6: Setting a breakpoint on the main function in gdb'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, we run the program again. This creates a new process, and `gdb` attaches
+    to it. Next, you can find the result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-7: Running the program again after setting the breakpoint'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, the execution has paused at line 3, which is just the line of
+    the `main` function. Then, the debugger waits for the next command. Now, we can
+    ask `gdb` to run the next line of code and pause again. In other words, we run
+    the program step by step and line by line. This way, you have enough time to look
+    around and check the variables and their values inside the memory. In fact, this
+    is the method we are going to use to probe the Stack and the Heap segments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following shell box, you can see how to use the `n` (or `next`) command
+    to run the next line of code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-8: Using the n (or next) command to execute upcoming lines of code'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, if you enter the `print arr` command in the debugger, it will show the
+    content of the array as a string:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-9: Printing the content of the arr array using gdb'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To get back to the topic, we introduced `gdb` to be able to see inside the
+    Stack memory. Now, we can do it. We have a process that has a Stack segment, and
+    it is paused, and we have a `gdb` command line to explore its memory. Let''s begin
+    and print the memory allocated for the `arr` array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-10: Printing bytes of memory starting from the arr array'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The first command, `x/4b`, shows 4 bytes from the location that `arr` is pointing
+    to. Remember that `arr` is a pointer that actually is pointing to the first element
+    of the array, so it can be used to move along the memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second command, `x/8b`, prints 8 bytes after `arr`. According to the code
+    written for *example 5.1*, and found in *Code Box 5-2*, the values `A`, `B`, `C`,
+    and `D` are stored in the array, `arr`. You should know that ASCII values are
+    stored in the array, not the real characters. The ASCII value for `A` is `65`
+    decimal or `0x41` hexadecimal. For `B`, it is `66` or `0x42`. As you can see,
+    the values printed in the `gdb` output are the values we just stored in the `arr`
+    array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What about the other 4 bytes in the second command? They are part of the Stack,
+    and they probably contain data from the recent Stack frame put on top of the Stack
+    while calling the `main` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the Stack segment is filled in an opposite fashion in comparison to
+    other segments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other memory regions are filled starting from the smaller addresses and they
+    move forward to bigger addresses, but this is not the case with the Stack segment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The Stack segment is filled from the bigger addresses and moves backward to
+    the smaller addresses. Some of the reasons behind this design lie in the development
+    history of modern computers, and some in the functionality of the Stack segment,
+    which behaves like a stack data structure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With all that said, if you read the Stack segment from an addresses toward the
+    bigger addresses, just like we did in *Shell Box 5-10*, you are effectively reading
+    the already pushed content as part of the Stack segment, and if you try to change
+    those bytes, you are altering the Stack, and this is not good. We will demonstrate
+    why this is dangerous and how this can be done in future paragraphs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Why are we able to see more than the size of the `arr` array? Because `gdb`
+    goes through the number of bytes in the memory that we have requested. The `x`
+    command doesn't care about the array's boundary. It just needs a starting address
+    and the number of bytes to print the range.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you want to change the values inside the Stack, you have to use the `set`
+    command. This allows you to modify an existing memory cell. In this case, the
+    memory cell refers to an individual byte in the `arr` array:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-11: Changing an individual byte in the array using the set command'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, using the `set` command, we have set the second element of the
+    `arr` array to `F`. If you are going to change an address that is not in the boundaries
+    of your arrays, it is still possible through `gdb`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Please observe the following modification carefully. Now, we want to modify
+    a byte located in a far bigger address than `arr`, and as we explained before,
+    we will be altering the already pushed content of the Stack. Remember, the Stack
+    memory is filled in an opposite manner compared to other segments:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-12: Changing an individual byte outside of the array''s boundary'
+  prefs: []
+  type: TYPE_NORMAL
+- en: That is all. We just wrote the value `0xff` in the `0x7fffffffcaed` address,
+    which is out of the boundary of the `arr` array, and probably a byte within the
+    stack frame pushed before entering the `main` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What will happen if we continue the execution? If we have modified a critical
+    byte in the Stack, we expect to see a crash or at least have this modification
+    detected by some mechanism and have the execution of the program halted. The command
+    `c` (or `continue`) will continue the execution of the process in `gdb`, as you
+    can see next:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-13: Having a critical byte changed in the Stack terminates the
+    process'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see in the preceding shell box, we've just smashed the Stack! Modifying
+    the content of the Stack in addresses that are not allocated by you, even by 1
+    byte, can be very dangerous and it usually leads to a crash or a sudden termination.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we have said before, most of the vital procedures regarding the execution
+    of a program are done within the Stack memory. So, you should be very careful
+    when writing to Stack variables. You should not write any values outside of the
+    boundaries defined for variables and arrays simply because the addresses grow
+    backward in the Stack memory, which makes it likely to overwrite the already written
+    bytes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When you're done with debugging, and you're ready to leave the `gdb`, then you
+    can simply use the command `q` (or `quit`). Now, you should be out of the debugger
+    and back in the terminal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As another note, writing unchecked values into a *buffer* (another name for
+    a byte or character array) allocated on top of the Stack (not from the Heap) is
+    considered a vulnerability. An attacker can carefully design a byte array and
+    feed it to the program in order to take control of it. This is usually called
+    an *exploit* because of a *buffer overflow* attack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following program shows this vulnerability:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-3: A program showing the buffer overflow vulnerability'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding code does not check the `argv[1]` input for its content and its
+    size and copies it directly into the `str` array, which is allocated on top of
+    the Stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you're lucky, this can lead to a crash, but in some rare but dangerous cases,
+    this can lead to an exploit attack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Points on using the Stack memory
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Now that you have a better understanding of the Stack segment and how it works,
+    we can talk about the best practices and the points you should be careful about.
+    You should be familiar with the *scope* concept. Each Stack variable has its own
+    scope, and the scope determines the lifetime of the variable. This means that
+    a Stack variable starts its lifetime in one scope and dies when that scope is
+    gone. In other words, the scope determines the lifetime of a Stack variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also have automatic memory allocation and deallocation for Stack variables,
+    and it is only applicable to the Stack variables. This feature, automatic memory
+    management, comes from the nature of the Stack segment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whenever you declare a Stack variable, it will be allocated on top of the Stack
+    segment. Allocation happens automatically, and this can be marked as the start
+    of its lifetime. After this point, many more variables and other stack frames
+    are put on top of it inside the Stack. As long as the variable exists in the Stack
+    and there are other variables on top of it, it survives and continues living.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Eventually, however, this stuff will get popped out of the Stack because at
+    some point in the future the program has to be finished, and the stack should
+    be empty at that moment. So, there should be a point in the future when this variable
+    is popped out of the stack. So, the deallocation, or getting popped out, happens
+    automatically, and that can be marked as the end of the variable's lifetime. This
+    is basically the reason why we say that we have automatic memory management for
+    the Stack variables that is not controlled by the programmer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Suppose that you have defined a variable in the `main` function, as we see
+    in the following code box:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-4: Declaring a variable on top of the Stack'
+  prefs: []
+  type: TYPE_NORMAL
+- en: This variable will stay in the Stack until the `main` function returns. In other
+    words, the variable exists until its scope (the `main` function) is valid. Since
+    the `main` function is the function in which all the program runs, the lifetime
+    of the variable is almost like a global variable that is declared throughout the
+    runtime of the program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is like a global variable, but not exactly one, because there will be a time
+    that the variable is popped out from the Stack, whereas a global variable always
+    has its memory even when the main function is finished and the program is being
+    finalized. Note that there are two pieces of code that are run before and after
+    the `main` function, bootstrapping and finalizing the program respectively. As
+    another note, global variables are allocated from a different segment, Data or
+    BSS, that does not behave like the Stack segment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's now look at an example of a very common mistake. It usually happens to
+    an amateur programmer while writing their first C programs. It is about returning
+    an address to a local variable inside a function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code box shows *example 5.2*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-5 [ExtremeC_examples_chapter5_2.c]: Declaring a variable on top
+    of the Stack'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `get_integer` function returns an address to the local variable, `var`,
+    which has been declared in the scope of the `get_integer` function. The `get_integer`
+    function returns the address of the local variable. Then, the `main` function
+    tries to dereference the received pointer and access the memory region behind.
+    The following is the output of the `gcc` compiler while compiling the preceding
+    code on a Linux system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-14: Compiling the example 5.2 in Linux'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you can see, we have received a warning message. Since returning the address
+    of a local variable is a common mistake, compilers already know about it, and
+    they show a clear warning message like `warning: function returns address of a local
+    variable`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'And this is what happens when we execute the program:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-15: Executing the example 5.2 in Linux'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see in *Shell Box 5-15*, a segmentation fault has happened. It can
+    be translated as a crash. It is usually because of invalid access to a region
+    of memory that had been allocated at some point, but now it is deallocated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some warnings should be treated as errors. For example, the preceding warning
+    should be an error because it usually leads to a crash. If you want to make all
+    warning to be treated as errors, it is enough to pass the `-Werror` option to
+    `gcc` compiler. If you want to treat only one specific warning as an error, for
+    example, the preceding warning, it is enough to pass the `-Werror=return-local-addr`
+    option.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you run the program with `gdb`, you will see more details regarding the crash.
+    But remember, you need to compile the program with the `-g` option otherwise `gdb`
+    won't be that helpful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is always mandatory to compile the sources with `-g` option if you are about
+    to debug the program using `gdb` or other debugging tools such as `valgrind`.
+    The following shell box demonstrates how to compile and run *example 5.2* in the debugger:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-16: Running the example 5.2 in the debugger'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As is clear from the `gdb` output, the source of the crash is located at line
+    8 in the `main` function, exactly where the program tries to write to the returned
+    address by dereferencing the returned pointer. But the `var` variable has been
+    a local variable to the `get_integer` function and it doesn't exist anymore, simply
+    because at line 8 we have already returned from the `get_integer` function and
+    its scope, together with all variables, have vanished. Therefore, the returned
+    pointer is a *dangling pointer*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is usually a common practice to pass the pointers addressing the variables
+    in the current scope to other functions but not the other way around, because
+    as long as the current scope is valid, the variables are there. Further function
+    calls only put more stuff on top of the Stack segment, and the current scope won't
+    be finished before them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the above statement is not a good practice regarding concurrent programs
+    because in the future, if another concurrent task wants to use the received pointer
+    addressing a variable inside the current scope, the current scope might have vanished
+    already.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To end this section and have a conclusion about the Stack segment, the following
+    points can be extracted from what we have explained so far:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Stack memory has a limited size; therefore, it is not a good place to store
+    big objects.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The addresses in Stack segment grow backward, therefore reading forward in the
+    Stack memory means reading already pushed bytes.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Stack has automatic memory management, both for allocation and deallocation.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Every Stack variable has a scope and it determines its lifetime. You should
+    design your logic based on this lifetime. You have no control over it.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Pointers should only point to those Stack variables that are still in a scope.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Memory deallocation of Stack variables is done automatically when the scope
+    is about to finish, and you have no control over it.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Pointers to variables that exist in the current scope can be passed to other
+    functions as arguments only when we are sure that the current scope will be still
+    in place when the code in the called functions is about to use that pointer. This
+    condition might break in situations when we have concurrent logic.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the next section, we will talk about the Heap segment and its various features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Almost any code, written in any programming language, uses Heap memory in some
+    way. That's because the Heap has some unique advantages that cannot be achieved
+    by using the Stack.
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, it also has some disadvantages; for example, it is slower
+    to allocate a region of Heap memory in comparison to a similar region in Stack
+    memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we are going to talk more about the Heap itself and the guidelines
+    we should keep in mind when using Heap memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap memory is important because of its unique properties. Not all of them are
+    advantageous and, in fact, some of them can be considered as risks that should
+    be mitigated. A great tool always has good points and some bad points, and if
+    you are going to use it properly, you are required to know both sides very well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here, we are going to list these features and see which ones are beneficial
+    and which are risky:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**The Heap doesn''t have any memory blocks that are allocated automatically**.
+    Instead, the programmer must use `malloc` or similar functions to obtain Heap
+    memory blocks, one by one. In fact, this could be regarded as a weak point for
+    Stack memory that is resolved by Heap memory. Stack memory can contain stack frames,
+    which are not allocated and pushed by the programmer but as a result of function
+    calls, and in an automatic fashion.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '**The Heap has a large memory size**. While the size of the Stack is limited
+    and it is not a good choice for keeping big objects, the Heap allows the storing
+    of very big objects even tens of gigabytes in size. As the Heap size grows, the
+    allocator needs to request more heap pages from the operating system, and the
+    Heap memory blocks are spread among these pages. Note that, unlike the Stack segment,
+    the allocating addresses in the Heap memory move forward to bigger addresses.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '**Memory allocation and deallocation inside Heap memory are managed by the
+    programmer**. This means that the programmer is the sole responsible entity for
+    allocating the memory and then freeing it when it is not needed anymore. In many
+    recent programming languages, freeing allocated Heap blocks is done automatically
+    by a parallel component called *garbage collector*. But in C and C++, we don''t
+    have such a concept and freeing the Heap blocks should be done manually. This
+    is indeed a risk, and C/C++ programmers should be very careful while using heap
+    memory. Failing to free the allocated Heap blocks usually leads to *memory leaks*,
+    which can be fatal in most cases.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '**Variables allocated from the Heap do not have any scope**, unlike variables
+    in the Stack.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: This is a risk because it makes memory management much harder. You don't know
+    when you need to deallocate the variable, and you have to come up with some new
+    definitions for the *scope* and the *owner* of the memory block in order to do
+    the memory management effectively. Some of these methods are covered in the upcoming
+    sections.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '**We can only use pointers to address a Heap memory block**. In other words,
+    there is no such concept as a Heap variable. The Heap region is addressed via
+    pointers.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '**Since the Heap segment is private to its owner process, we need to use a
+    debugger to probe it**. Fortunately, C pointers work with the Heap memory block
+    exactly the same as they work with Stack memory blocks. C does this abstraction
+    very well, and because of this, we can use the same pointers to address both memories.
+    Therefore, we can use the same methods that we used to examine the Stack to probe
+    the Heap memory.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In the next section, we are going to discuss how to allocate and deallocate
+    a heap memory block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap memory allocation and deallocation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we said in the previous section, Heap memory should be obtained and released
+    manually. This means that the programmer should use a set of functions or API
+    (the C standard library's memory allocation functions) in order to allocate or
+    free a memory block in the Heap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These functions do exist, and they are defined in the header, `stdlib.h`. The
+    functions used for obtaining a Heap memory block are `malloc`, `calloc`, and `realloc`,
+    and the sole function used for releasing a Heap memory block is `free`. *Example
+    5.3* demonstrates how to use some of these functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In some texts, dynamic memory is used to refer to Heap memory. *Dynamic memory
+    allocation* is a synonym for Heap memory allocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code box shows the source code of *example 5.3*. It allocates
+    two Heap memory blocks, and then it prints its own memory mappings:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-6 [ExtremeC_examples_chapter5_3.c]: Example 5.3 showing the memory
+    mappings after allocating two Heap memory blocks'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding code is cross-platform, and you can compile it on most Unix-like
+    operating systems. But the `print_mem_maps` function only works on Linux since
+    the `__linux__` macro is only defined in Linux environments. Therefore, in macOS,
+    you can compile the code, but the `print_mem_maps` function won't do anything.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following shell box is the result of running the example in a Linux environment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-17: Output of example 5.3 in Linux'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding output has a lot to say. The program prints the addresses of the
+    pointers `ptr1` and `ptr2`. If you find the memory mapping of the Stack segment,
+    as part of the printed memory mappings, you see that the Stack region starts from
+    `0x7ffe0ad57000` and ends at `0x7ffe0ad78000`. The pointers are within this range.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This means that the pointers are allocated from the Stack, but they are pointing
+    to a memory region outside of the Stack segment, in this case, the Heap segment.
+    It is very common to use a Stack pointer to address a Heap memory block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Keep in mind that the `ptr1` and `ptr2` pointers have the same scope and they
+    will be freed when the `main` function returns, but there is no scope to the Heap
+    memory blocks obtained from the Heap segment. They will remain allocated until
+    the program frees them manually. You can see that before returning from the `main`
+    function, both memory blocks are freed using the pointers pointing to them and
+    using the `free` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As a further note regarding the above example, we can see that the addresses
+    returned by the `malloc` and `calloc` functions are located inside the Heap segment.
+    This can be investigated by comparing the returned addresses and the memory mapping
+    described as `[heap]`. The region marked as heap starts from `0x564c03977000`
+    and ends at `0x564c03998000`. The `ptr1` pointer points to the address `0x564c03977260`
+    and the `ptr2 p`ointer points to the address `0x564c03977690`, which are both
+    inside the heap region.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Regarding the Heap allocation function, as their names imply, `calloc` stands
+    for **clear and allocate** and `malloc` stands for **memory allocate**. So, this
+    means that `calloc` clears the memory block after allocation, but `malloc` leaves
+    it uninitialized until the program does it itself if necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In C++, the `new` and `delete` keywords do the same as `malloc` and `free` respectively.
+    Additionally, new operator infers the size of the allocated memory block from
+    the operand type and also converts the returned pointer to the operand type automatically.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'But if you look at the bytes in the two allocated blocks, both of them have
+    zero bytes. So, it seems that `malloc` has also initialized the memory block after
+    the allocation. But based on the description of `malloc` in the C Specification,
+    `malloc` doesn''t initialize the allocated memory block. So, why is that? To move
+    this further, let''s run the example in a macOS environment:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-18: Output of example 5.3 on macOS'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you look carefully, you can see that the memory block allocated by `malloc`
+    has some non-zero bytes, but the memory block allocated by `calloc` is all zeros.
+    So, what should we do? Should we assume that the memory block allocated by `malloc`
+    in Linux is always zeros?
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you are going to write a cross-platform program, always be aligned with the
+    C specification. The specification says `malloc` does not initialize the allocated
+    memory block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even when you are writing your program only for Linux and not for other operating
+    systems, be aware that future compilers may behave differently. Therefore, according
+    to the C specification, we must always assume that the memory block allocated
+    by the `malloc` is not initialized and it should be initialized manually if necessary.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that since `malloc` doesn't initialize the allocated memory, it is usually
+    faster than `calloc`. In some implementations, `malloc` doesn't actually allocate
+    the memory block and defer the allocation until when the memory block is accessed
+    (either read or write). This way, memory allocations happen faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you are going to initialize the memory after `malloc`, you can use the `memset`
+    function. Here is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-7: Using the memset function to initialize a memory block'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `realloc` function is another function that is introduced as part of the
+    Heap allocation functions. It was not used as part of *example 5.3*. It actually
+    reallocates the memory by resizing an already allocated memory block. Here is
+    an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-8: Using the realloc function to change the size of an already allocated
+    block'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `realloc` function does not change the data in the old block and only expands
+    an already allocated block to a new one. If it cannot expand the currently allocated
+    block because of *fragmentation*, it will find another block that's large enough
+    and copy the data from the old block to the new one. In this case, it will also
+    free the old block. As you can see, reallocation is not a cheap operation in some
+    cases because it involves many steps, hence it should be used with care.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last note about *example 5.3* is on the `free` function. In fact, it deallocates
+    an already allocated Heap memory block by passing the block's address as a pointer.
+    As it is said before, any allocated Heap block should be freed when it is not
+    needed. Failing to do so leads to *memory leakage*. Using a new example, *example
+    5.4*, we are going to show you how to detect memory leaks using the `valgrind` tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s first produce some memory leaks as part of *example 5.4*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-9: Producing a memory leak by not freeing the allocated block when
+    returning from the main function'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding program has a memory leak because when the program ends, we have
+    `16` bytes of Heap memory allocated and not freed. This example is very simple,
+    but when the source code grows and more components are involved, it would be too
+    hard or even impossible to detect it by sight.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory profilers are useful programs that can detect the memory issues in a running
+    process. The famous `valgrind` tool is one of the most well knowns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In order to use `valgrind` to analyze *example 5.4*, first we need to build
+    the example with the debug option, `-g`. Then, we should run it using `valgrind`.
+    While running the given executable object file, `valgrind` records all of the
+    memory allocations and deallocations. Finally, when the execution is finished
+    or a crash happens, `valgrind` prints out the summary of allocations and deallocations
+    and the amount of memory that has not been freed. This way, it can let you know
+    how much memory leak has been produced as part of the execution of the given program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following shell box demonstrates how to compile and use `valgrind` for
+    *example 5.4*:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-19: Output of valgrind showing the 16-byte memory leak as part
+    of the execution of example 5.4'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you look into the `HEAP SUMMARY` section in *Shell Box 5-19*, you can see
+    that we had `1` allocation and `0` frees, and `16` bytes remained allocated while
+    exiting. If you come down a bit to the `LEAK SUMMARY` section, it states that
+    `16` bytes are definitely lost, and this means a memory leak!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you want to know exactly at which line the mentioned leaking memory block
+    has been allocated, you can use `valgrind` with a special option designed for
+    this. In the following shell box, you will see how to use `valgrind` to find the
+    lines responsible for the actual allocation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-20: Output of valgrind showing the line that is responsible for
+    the actual allocation'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, we have passed the `--leak-check=full` option to `valgrind`,
+    and now it shows the line of code that is responsible for the leaking Heap memory.
+    It clearly shows that line 4 in *Code Box 5-9*, which is a `malloc` call, is where
+    the leaking Heap block has been allocated. This can help you to trace it further
+    and find the right place that the mentioned leaking block should be freed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'OK, let''s change the preceding example so that it frees the allocated memory.
+    We just need to add the `free(ptr)` instruction before the `return` statement,
+    as we can see here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-10: Freeing up the allocated memory block as part of example 5.4'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now with this change, the only allocated Heap block is freed. Let''s build
+    and run `valgrind` again:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-20: Output of valgrind after freeing the allocated memory block'
+  prefs: []
+  type: TYPE_NORMAL
+- en: As you can see, `valgrind` says that `All Heap blocks were freed`, and this
+    effectively means that we have no further memory leakage in our program. Running
+    programs with `valgrind` can slow them down noticeably by a factor of 10 to 50,
+    but it can help you to spot the memory issues very easily. It's a good practice
+    to let your written programs run inside a memory profiler and catch memory leaks
+    as soon as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory leaks can be considered both as *technical debts*, if you have a bad
+    design that causes the leaks, or as *risks*, where it's known that we have a leak,
+    but we don't know what will happen if the leak continues to grow. But in my opinion,
+    they should be treated as *bugs*; otherwise, it will take a while for you to look
+    back at them. Usually, in teams, memory leaks are treated as bugs that should
+    be fixed as soon as possible.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are other memory profilers other than `valgrind`. **LLVM Address Sanitizer**
+    (or **ASAN**) and **MemProf** are also other well-known memory profilers. Memory
+    profilers can profile memory usage and allocations using various methods. Next,
+    we discuss some of them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some profilers can behave like a sandbox, running the target program inside
+    and monitoring all their memory activities. We've used this method to run *example
+    5.4* inside a `valgrind` sandbox. This method does not require you to recompile
+    your code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Another method is to use the libraries provided by some memory profilers, which
+    wrap memory-related system calls. This way, the final binary will contain all
+    of the logic required for the profiling task.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`valgrind` and ASAN can be linked to the final executable object file as a
+    memory profiler library. This method requires the recompilation of your target
+    source code and even making some modifications to your source code as well.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Programs can also *preload* different libraries instead of the default C standard
+    libraries, which contain memory *function interpositions* of the C library's standard
+    memory allocation functions. This way, you are not required to compile your target
+    source code. You just need to specify the libraries of such profilers in the `LD_PRELOAD`
+    environment variable to be preloaded instead of the default `libc` libraries.
+    `MemProf` uses this method.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A *function interposition* is a wrapper function defined in a dynamic library
+    loaded before the target dynamic library, which propagates calls to the target
+    function. Dynamic libraries can be preloaded using the `LD_PRELOAD` environment
+    variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap memory principles
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As pointed out before, Heap memory is different from Stack memory in several
+    ways. Therefore, heap memory has its own guidelines regarding memory management.
+    In this section, we are going to focus on these differences and come up with some
+    dos and don'ts that we should consider when working with the Heap space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Every memory block (or a variable) in the Stack has a scope. So, it is an easy
+    task to define the lifetime of a memory block based on its scope. Whenever we
+    are out of scope, all of the variables in that scope are gone. But this is different
+    and much more complex with Heap memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A Heap memory block doesn't have any scope, so its lifetime is unclear and should
+    be redefined. This is the reason behind having manual deallocation or *generational*
+    *garbage collection* in modern languages such as Java. The Heap lifetime cannot
+    be determined by the program itself or the C libraries used, and the programmer
+    is the sole person who defines the lifetime of a Heap memory block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When the discussion comes to the programmer's decision, especially in this case,
+    it is complicated and hard to propose a universal silver bullet solution. Every
+    opinion is debatable and can lead to a trade-off.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the best proposed strategies to overcome the complexity of the Heap lifetime,
+    which of course is not a complete solution, is to define an *owner* for a memory
+    block instead of having a scope that encompasses the memory block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The owner is the sole entity responsible for managing the lifetime of a Heap
+    memory block and is the one who allocates the block in the first place and frees
+    it when the block is not needed anymore.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are many classic examples of how to use this strategy. Most of the well-known
+    C libraries use this strategy to handle their Heap memory allocations. *Example
+    5.5* is a very simple implementation of this method that is used to manage the
+    lifetime of a queue object written in C. The following code box tries to demonstrate
+    the *ownership* strategy:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-11 [ExtremeC_examples_chapter5_5.c]: The example 5.5 demonstrating
+    the ownership strategy for Heap lifetime management'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding example contains two different ownerships each of which owning
+    a specific object. The first ownership is about the Heap memory block addressed
+    by the `arr` pointer in the `queue_t` structure that is owned by the queue object.
+    As long as the queue object exists, this memory block must remain in place and
+    allocated.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The second ownership is regarding the Heap memory block acquired by the `main`
+    function as a placeholder for the queue object, `q`, that is owned by the `main`
+    function itself. It is very important to distinguish between the Heap memory blocks
+    owned by the queue object and the Heap memory blocks owned by the `main` function
+    because releasing one of them doesn't release another.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To demonstrate how a memory leak can happen in the preceding code, suppose that
+    you forget to call the `destroy` function on the queue object. It will definitely
+    lead to a memory leak because the Heap memory block acquired inside the `init`
+    function would be still allocated and not freed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that if an entity (an object, function, and so on) owns a Heap memory block,
+    it should be expressed in the comments. Nothing should free a Heap memory block
+    if it does not own the block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that multiple deallocations of the same Heap memory block will lead to
+    a *double free* situation. A double-free situation is a memory corruption issue
+    and like any other memory corruption issue, it should be dealt with and resolved
+    soon after detection. Otherwise, it can have serious consequences like sudden
+    crashes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other than the ownership strategy, one could use a garbage collector. The garbage
+    collector is an automatic mechanism that is embedded in a program and tries to
+    collect memory blocks that have no pointer addressing them. One of the old well-known
+    garbage collectors for C is the *Boehm-Demers-Weiser Conservative Garbage Collector*,
+    which provides a set of memory allocation functions that should be called instead
+    of `malloc` and other standard C memory allocation functions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Further Reading**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'More informatio[n about the Boehm-Demers-Weise](http://www.hboehm.info/gc/)r
+    garbage collector can be found here: [http://www.hboehm.info/gc/](http://www.hboehm.info/gc/).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another technique to manage the lifetime of a Heap block is using a RAII object.
+    **RAII** stands for **Resource Acquisition Is Initialization**. It means that
+    we can bind the lifetime of a resource, possibly a Heap allocated memory block,
+    to the lifetime of an object. In other words, we use an object that upon its construction
+    initializes the resource, and upon its destruction frees the resource. Unfortunately,
+    this technique cannot be used in C because we are not notified about the destruction
+    of an object. But in C++, using destructors, this technique can be used effectively.
+    In RAII objects, resource initialization happens in the constructor and the code
+    required to de-initialize the resource is put into the destructor. Note that in
+    C++, the destructor is invoked automatically when an object is going out of scope
+    or being deleted.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As a conclusion, the following guidelines are important when working with Heap
+    memory:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Heap memory allocation is not free, and it has its own costs. Not all memory
+    allocation functions have the same cost and, usually, `malloc` is the cheapest
+    one.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All memory blocks allocated from the Heap space must be freed either immediately
+    when they are not needed anymore or just before ending the program.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Since Heap memory blocks have no scope, the program must be able to manage the
+    memory in order to avoid any possible leakage.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Sticking to a chosen memory management strategy for each Heap memory block seems
+    to be necessary.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The chosen strategy and its assumptions should be documented throughout the
+    code wherever the block is accessed so that future programmers will know about
+    it.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In certain programming languages like C++, we can use RAII objects to manage
+    a resource, possibly a Heap memory block.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: So far, we have considered that we have enough memory to store big objects and
+    run any kind of program. But in the following section, we are going to put some
+    constraints on the available memory and discuss the environments where the memory
+    is low, or it is costly (in terms of money, time, performance, and so on) to add
+    further memory storage. In such cases, we need to use the available memory in
+    the most efficient way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory management in constrained environments
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: There are environments in which memory is a precious resource, and it is often
+    limited. There are also other environments in which performance is a key factor
+    and programs should be fast, no matter how much memory we have. Regarding memory
+    management, each of these environments requires a specific technique to overcome
+    the memory shortage and performance degradation. First, we need to know what a
+    constrained environment is.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A constrained environment does not necessarily have a low memory capacity. There
+    are usually some *constraints* that limit the memory usage for a program. These
+    constraints can be your customer's hard limits regarding memory usage, or it could
+    be because of a hardware that provides the low memory capacity, or it can be because
+    of an operating system that does not support a bigger memory (for example, MS-DOS).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even if there are no constraints or hardware limitations, we as programmers
+    try our best to use the least possible amount of memory and use it in an optimal
+    way. Memory consumption is one of the key *non-functional requirements* in a project
+    and should be monitored and tuned carefully.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we'll first introduce the techniques used in low memory environments
+    for overcoming the shortage issue, and then we will talk about the memory techniques
+    usually used in performant environments in order to boost the performance of the
+    running programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory-constrained environments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In these environments, limited memory is always a constraint, and algorithms
+    should be designed in a way in order to cope with memory shortages. Embedded systems
+    with a memory size of tens to hundreds of megabytes are usually in this category.
+    There are a few tips about memory management in such environments, but none of
+    them work as well as having a nicely tuned algorithm. In this case, algorithms
+    with a low memory complexity are usually used. These algorithms usually have a
+    higher *time complexity*, which should be traded off with their low memory usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To elaborate more on this, every algorithm has specific *time* and *memory*
+    complexities. Time complexity describes the relationship between the input size
+    and the time that the algorithm takes to complete. Similarly, memory complexity
+    describes the relationship between the input size and the memory that the algorithm
+    consumes to complete its task. These complexities are usually denoted as *Big-O
+    functions*, which we don't want to deal with in this section. Our discussion is
+    qualitative, so we don't need any math to talk about memory-constrained environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An algorithm should ideally have a low time complexity and also a low memory
+    complexity. In other words, having a fast algorithm consuming a low amount of
+    memory is highly desirable, but it is unusual to have this "best of both worlds"
+    situation. It is also unexpected to have an algorithm with high memory consumption
+    while not performing well
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most of the time, we have a trade-off between memory and speed, which represents
+    time. As an example, a sorting algorithm that is faster than another algorithm
+    usually consumes more memory than the other, despite the fact that both of them
+    do the same job.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is a good but conservative practice, especially when writing a program, to
+    assume that we are writing code for a memory-constrained system, even if we know
+    that we will have more than enough memory in the final production environment.
+    We make this assumption because we want to mitigate the risk of having too much
+    memory consumption.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the driving force behind this assumption should be controlled and
+    adjusted based on a fairly accurate guess about the average memory availability,
+    in terms of size, as part of the final setup. Algorithms designed for memory-constrained
+    environments are intrinsically slower, and you should be careful about this trap.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the upcoming sections, we will cover some techniques that can help us to
+    collect some wasted memory or to use less memory in memory-constrained environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Packed structures
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: One of the easiest ways to use less memory is to use packed structures. Packed
+    structures discard the memory alignment and they have a more compact memory layout
+    for storing their fields.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using packed structures is actually a trade-off. You consume less memory because
+    you discard memory alignments and eventually end up with more memory read time
+    while loading a structure variable. This will result in a slower program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This method is simple but not recommended for all programs. For more information
+    regarding this method, you can read the *Structures* section found in *Chapter
+    1*, *Essential Features*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compression
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: This is an effective technique, especially for programs working with a lot of
+    textual data that should be kept inside the memory. Textual data has a high *compression
+    ratio* in comparison to binary data. This technique allows a program to store
+    the compressed form instead of the actual text data with a huge memory return.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, saving memory is not free; since compression algorithms are *CPU-bound*
+    and computation-intensive, the program would have worse performance in the end.
+    This method is ideal for programs that keep textual data that is not required
+    often; otherwise, a lot of compression/decompression operations are needed, and
+    the program would be almost unusable eventually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: External data storage
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Using external data storage in the forms of a network service, a cloud infrastructure,
+    or simply a hard drive is a very common and useful technique for resolving low
+    memory issues. Since it is usually considered that a program might be run in a
+    limited or low memory environment, there are a lot of examples that use this method
+    to be able to consume less memory even in environments in which enough memory
+    is available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This technique usually assumes that memory is not the main storage, but it acts
+    as *cache* memory. Another assumption is that we cannot keep the whole data in
+    the memory and at any moment, only a portion of data or a *page* of data can be
+    loaded into the memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'These algorithms are not directly addressing the low memory problem, but they
+    are trying to solve another issue: slow external data storage. External data storage
+    is always too slow in comparison to the main memory. So, the algorithms should
+    balance the reads from the external data store and their internal memory. All
+    database services, such as PostgreSQL and Oracle, use this technique.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In most projects, it is not very wise to design and write these algorithms from
+    scratch because these algorithms are not that trivial and simple to write. The
+    teams behind famous libraries such as SQLite have been fixing bugs for years.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you need to access an external data storage such as a file, a database, or
+    a host on the network while having a low memory footprint, there are always options
+    out there for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Performant environments
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: As we have explained in the previous sections about the time and memory complexities
+    of an algorithm, it is usually expected to consume more memory when you want to
+    have a faster algorithm. In this section, we therefore expect to consume more
+    memory for the sake of increased performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An intuitive example of this statement can be using a cache in order to increase
+    the performance. Caching data means consuming more memory, but we could expect
+    to get better performance if the cache is used properly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But adding extra memory is not always the best way to increase performance.
+    There are other methods that are directly or indirectly related to memory and
+    can have a substantial impact on the performance of an algorithm. Before jumping
+    to these methods, let's talk about caching first.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Caching
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Caching is a general term for all similar techniques utilized in many parts
+    of a computer system when two data storages with different read/write speeds are
+    involved. For example, the CPU has a number of internal registers that perform
+    quickly in terms of reading and writing operations. In addition, the CPU has to
+    fetch data from the main memory, which is many times slower than its registers.
+    A caching mechanism is needed here; otherwise, the lower speed of the main memory
+    becomes dominant, and it hides the high computational speed of the CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with database files is another example. Database files are usually stored
+    on an external hard disk, which is far slower than the main memory, by orders
+    of magnitude. Definitely, a caching mechanism is required here; otherwise, the
+    slowest speed becomes dominant, and it determines the speed of the whole system.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Caching and the details around it deserve to have a whole dedicated chapter
+    since there are abstract models and specific terminology that should be explained.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using these models, one can predict how well a cache would behave and how much
+    *performance gain* could be expected after introducing the cache. Here, we try
+    to explain caching in a simple and intuitive manner.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Suppose that you have slow storage that can contain many items. You also have
+    another fast storage, but it can contain a limited number of items. This is an
+    obvious tradeoff. We can call the faster but smaller storage a *cache*. It would
+    be reasonable if you bring items from the slow storage into the fast one and process
+    them on the fast storage, simply because it is faster.
+  prefs: []
+  type: TYPE_NORMAL
+- en: From time to time, you have to go to slow storage in order to bring over more
+    items. It is obvious that you won't bring only one item over from the slow storage,
+    as this would be very inefficient. Rather, you will bring a *bucket* of items
+    into the faster storage. Usually, it is said that the items are cached into the
+    faster storage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Suppose that you are processing an item that requires you to load some other
+    item from the slow storage. The first thing that comes to mind is to search for
+    the required item inside the recently brought bucket, which is in the cache storage
+    at the moment.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you could find the item in the cache, there is no need to retrieve it from
+    the slow storage, and this is called a *hit*. If the item is missing from the
+    cache storage, you have to go to the slow storage and read another bucket of items
+    into the cache memory. This is called a *miss*. It is clear that the more hits
+    you observe, the more performance you get.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding description can be applied to the CPU cache and the main memory.
+    The CPU cache stores recent instructions and data read from the main memory, and
+    the main memory is slow compared to the CPU cache memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the following section, we discuss cache-friendly code, and we observe why
+    cache-friendly code can be executed faster by the CPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Cache-friendly code
+  prefs:
+  - PREF_H4
+  type: TYPE_NORMAL
+- en: When the CPU is executing an instruction, it has to fetch all required data
+    first. The data is located in the main memory at a specific address that is determined
+    by the instruction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The data has to be transferred to the CPU registers before any computation.
+    But the CPU usually brings more blocks than are expected to be fetched and puts
+    them inside its cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next time, if a value is needed in the *proximity* of the previous address,
+    it should exist in the cache, and the CPU can use the cache instead of the main
+    memory, which is far faster than reading it from the main memory. As we explained
+    in the previous section, this is a *cache hit*. If the address is not found in
+    the CPU cache, it is a *cache miss*, and the CPU has to access the main memory
+    to read the target address and bring required data which is quite slow. In general,
+    higher hit rates result in faster executions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: But why does the CPU fetch the neighboring addresses (the proximity) around
+    an address? It is because of the *principle of locality*. In computer systems,
+    it is usually observed that the data located in the same neighborhood is more
+    frequently accessed. So, the CPU behaves according to this principle and brings
+    more data from a local reference. If an algorithm can exploit this behavior, it
+    can be executed faster by the CPU. This is why we refer to such algorithm as a
+    *cache-friendly* algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '*Example 5.6* demonstrates the difference between the performances of cache-friendly
+    code and non-cache-friendly code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Code Box 5-12 [ExtremeC_examples_chapter5_6.c]: Example 5.6 demonstrates the
+    performance of cache-friendly code and non-cache-friendly code'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding program computes and prints the sum of all elements in a matrix,
+    but it also does more than that.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The user can pass options to this program, which alters its behavior. Suppose
+    that we want to print a 2 by 3 matrix that is initialized by an algorithm written
+    in the `fill` function. The user has to pass the `print` option with the desired
+    number of rows and columns. Next, you can see how these options are passed to
+    the final executable binary:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-21: Output of example 5.6 showing a 2 by 3 matrix'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The output consists of two different prints for the matrix. The first is the
+    2D representation of the matrix and the second is the *flat* representation of
+    the same matrix. As you can see, the matrix is stored as a *row-major order* in
+    memory. This means that we store it row by row. So, if something from a row is
+    fetched by the CPU, it is probable that all of the elements in that row are fetched
+    too. Hence, it would be better to do our summation in row-major order and not
+    *column-major* order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you look at the code again, you can see that the summation done in the `friendly_sum`
+    function is row-major, and the summation performed in the `not_friendly_sum` function
+    is column-major. Next, we can compare the time it takes to perform the summation
+    of a matrix with 20,000 rows and 20,000 columns. As you can see, the difference
+    is very clear:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Shell Box 5-22: Demonstration of the time difference between the column-major
+    and row-major matrix summation algorithms'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The difference between the measured times is about 10 seconds! The program is
+    compiled on a macOS machine using the `clang` compiler. The difference means that
+    the same logic, using the same amount of memory, can take much longer – just by
+    selecting a different order of accessing the matrix elements! This example clearly
+    shows the effect of cache-friendly code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Note**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `time` utility is available in all Unix-like operating systems. It can be
+    used to measure the time a program takes to finish.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before continuing to the next technique, we should talk a bit more about the
+    allocation and deallocation cost.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Allocation and deallocation cost
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Here, we want to specifically talk about the cost of Heap memory allocation
+    and deallocation. This might be a bit of a surprise if you realize that Heap memory
+    allocation and deallocation operations are time-and memory-consuming and are usually
+    expensive, especially when you need to allocate and deallocate Heap memory blocks
+    many times per second.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Unlike Stack allocation, which is relatively fast and the allocation itself
+    requires no further memory, Heap allocation requires finding a free block of memory
+    with enough size, and this can be costly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are many algorithms designed for memory allocation and deallocation, and
+    there is always a tradeoff between the allocation and deallocation operations.
+    If you want to allocate quickly, you have to consume more memory as part of the
+    allocation algorithm and vice versa if you want to consume less memory you can
+    choose to spend more time with a slower allocation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are memory allocators for C other than those provided by the default C
+    standard library through the `malloc` and `free` functions. Some of these memory
+    allocator libraries are `ptmalloc`, `tcmalloc`, `Haord`, and `dlmalloc`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Going through all allocators here is beyond the scope of this chapter, but it
+    would be good practice for you to go through them and give them a try for yourself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'What is the solution to this silent problem? It is simple: allocate and deallocate
+    less frequently. This may seem impossible in some programs that are required to
+    have a high rate of Heap allocations. These programs usually allocate a big block
+    of the Heap memory and try to manage it themselves. It is like having another
+    layer of allocation and deallocation logic (maybe simpler than implementations
+    of `malloc` and `free`) on top of a big block of the Heap memory.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: There is also another method, which is using *memory pools*. We'll briefly explain
+    this technique before we come to the end of this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Memory pools
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: As we described in the previous section, memory allocation and deallocation
+    are costly. Using a pool of preallocated fixed-size Heap memory blocks is an effective
+    way to reduce the number of allocations and gain some performance. Each block
+    in the pool usually has an identifier, which can be acquired through an API designed
+    for pool management. Also, the block can be released later when it is not needed.
+    Since the amount of allocated memory remains almost fixed, it is an excellent
+    choice for algorithms willing to have deterministic behavior in memory-constrained
+    environments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Describing memory pools in further detail is beyond the scope of this book;
+    many useful resources on this topic exist online if you wish to read more about
+    it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As part of this chapter, we mainly covered the Stack and Heap segments and the
+    way they should be used. After that, we briefly discussed memory-constrained environments
+    and we saw how techniques like caching and memory pools can increase the performance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We discussed the tools and techniques used for probing both Stack and Heap segments.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We introduced debuggers and we used `gdb` as our main debugger to troubleshoot
+    memory-related issues.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We discussed memory profilers and we used `valgrind` to find memory issues such
+    as leakages or dangling pointers happening at runtime.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We compared the lifetime of a Stack variable and a Heap block and we explained
+    how we should judge the lifetime of such memory blocks.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We saw that memory management is automatic regarding Stack variables, but it
+    is fully manual with Heap blocks.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We went through the common mistakes that happen when dealing with Stack variables.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We discussed the constrained environments and we saw how memory tuning can be
+    done in these environments.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We discussed the performant environments and what techniques can be used to
+    gain some performance.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The next four chapters together cover object orientation in C. This might at
+    first glance seem to be unrelated to C, but in fact, this is the correct way to
+    write object-oriented code in C. As part of these chapters, you will be introduced
+    to the proper way of designing and solving a problem in an object-oriented fashion,
+    and you will get guidance through writing readable and correct C code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next chapter covers encapsulation and the basics of object-oriented programming
+    by providing the required theoretical discussion and examples to explore the topics
+    discussed.
+  prefs: []
+  type: TYPE_NORMAL

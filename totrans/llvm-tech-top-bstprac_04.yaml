@@ -1,0 +1,845 @@
+- en: '*Chapter 3*: Testing with LLVM LIT'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we learned how to take advantage of LLVM's own CMake
+    utilities to improve our development experience. We also learned how to seamlessly
+    integrate LLVM into other out-of-tree projects. In this chapter, we're going to
+    talk about how to get hands-on with LLVM's own testing infrastructure, LIT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**LIT** is a testing infrastructure that was originally developed for running
+    LLVM''s regression tests. Now, it''s not only the harness for running all the
+    tests in LLVM (both **unit** and **regression tests)** but also a generic testing
+    framework that can be used outside of LLVM. It also provides a wide range of testing
+    formats to tackle different scenarios. This chapter will give you a thorough tour
+    of the components in this framework and help you master LIT.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We are going to cover the following topics in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using LIT in out-of-tree projects
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Learning about advanced FileCheck tricks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Exploring the TestSuite framework
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The core of LIT is written in *Python*, so please make sure you have Python
+    2.7 or Python 3.x installed (Python 3.x is preferable, as LLVM is gradually retiring
+    Python 2.7 now).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In addition, there are a bunch of supporting utilities, such as `FileCheck`,
+    which will be used later. To build those utilities, the fastest way, unfortunately,
+    is to build any of the `check-XXX` (phony) targets. For example, we could build
+    `check-llvm-support`, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, the last section requires that `llvm-test-suite` has been built, which
+    is a separate repository from `llvm-project`. We can clone it by using the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The easiest way to configure the build will be using one of the cached CMake
+    configs. For example, to build the test suite with optimizations (`O3`), we will
+    use the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we can build it normally using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using LIT in out-of-tree projects
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Writing an in-tree LLVM IR regression test is pretty easy: all you need to
+    do is annotate the IR file with testing directives. Look at the following script,
+    for example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: This script checks if `InstCombine` (triggered by the `-instcombine` command-line
+    option shown in the preceding snippet) simplifies two succeeding arithmetic adds
+    into one. After putting this file into an arbitrary folder under `llvm/test`,
+    the script will automatically be picked and run as part of the regression test
+    when you're executing the `llvm-lit` command-line tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Despite its convenience, this barely helps you use LIT in out-of-tree projects.
+    Using LIT out-of-tree is especially useful when your project needs some end-to-end
+    testing facilities, such as a format converter, a text processor, a linter, and,
+    of course, a compiler. This section will show you how to bring LIT to your out-of-tree
+    projects, and then provide you with a complete picture of the running flow of
+    LIT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preparing for our example project
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we will use an out-of-tree CMake project. This example project
+    builds a command-line tool, `js-minifier`, that *minifies* arbitrary JavaScript
+    code. We will transform the following JavaScript code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This will be transformed into some other *semantic-equivalent* code that is
+    as short as possible:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of teaching you how to write this `js-minifier`, the goal of this section
+    is to show you how to create a LIT testing environment to *test* this tool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The example project has the following folder structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The files under the `/src` folder contain the source code for `js-minifier`
+    (which we are not going to cover here). What we will focus on here are the files
+    that will be used for testing `js-minifier`, which sit under the `/test` folder
+    (for now, there is only one file, `test.js`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we are going to set up a testing environment so that when
+    we run `llvm-lit` – the testing driver and main character of this section – under
+    the CMake `/build` folder, it will print testing results, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This shows how many and what test cases have passed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the testing script, `test.js`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, it is a simple testing process that runs the `js-minifier` tool
+    – represented by the `%jsm` directive, which will be replaced by the real path
+    to `js-minifier` executable, as explained later – and checks the running result
+    with `FileCheck` by using its `CHECK` and `CHECK-SAME` directives.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With that, we've set up our example project. Before we wrap up the preparation,
+    there is one final tool we need to create.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since we''re trying to cut down on our reliance on the LLVM source tree, recreate
+    the `llvm-lit` command-line tool using the `LIT` package available in the *PyPi
+    repository* (that is, the `pip` command-line tool). All you need to do is install
+    that package:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, wrap the package with the following script:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now, we can use LIT without building an LLVM tree! Next, we will create some
+    LIT configuration scripts that will drive the whole testing flow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing LIT configurations
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this subsection, we''ll show you how to write LIT configuration scripts.
+    These scripts describe the testing process – where the files will be tested, the
+    testing environment (if we need to import any tool, for example), the policy when
+    there is a failure, and so on. Learning these skills can greatly improve how you
+    use LIT in places outside the LLVM tree. Let''s get started:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Inside the `/JSMinifier/test` folder, create a file called `lit.cfg.py` that
+    contains the following content:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Following on from the code snippet in the previous step, LIT now needs two
+    other pieces of information: the *root path* to the test files and the *working
+    directory*:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The `%jsm` directive we saw earlier in `test.js` is used as a placeholder that
+    will eventually be replaced with the real/absolute path of the `js-minifier` executable.
+    The following lines will set up the replacements:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, create a new file called `lit.site.cfg.py.in` and put it under the `/JSMinifier/test`
+    folder. The first part of this file looks like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The mystery `config.my_obj_root` field is finally resolved here, but instead
+    of pointing to a normal string, it is assigned to a weird value called `@CMAKE_BINARY_DIR@`.
+    Again, this will be replaced by CMake with the real path later. The same goes
+    for the `config.my_src_root` field.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Finally, `lit.site.cfg.py.in` is wrapped up by these lines:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, it''s time to replace those weird @-clamped strings with real values
+    using CMake''s `configure_file` function. In `/JSMinifier/test/CMakeLists.txt`,
+    add the following line somewhere inside the file:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: name = "@FOO@"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: age = @AGE@
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: set(FOO "John Smith")
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: set(AGE 87)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: configure_file(demo.txt.in
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: demo.txt @ONLY)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: name = "John Smith"
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: age = 87
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Back to the `lit.site.cfg.py.in` snippets, since `CMAKE_SOURCE_DIR` and `CMAKE_BINARY_DIR`
+    are always available, they point to the root source folder and the `build` folder,
+    respectively. The resulting `/JSMinifier/build/test/lit.site.cfg.py` will contain
+    the following content:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: With that, we have learned how to write LIT configuration scripts for our example
+    project. Now, it is time to explain some details of how LIT works internally,
+    and why we need so many files (`lit.cfg.py`, `lit.site.cfg.py.in`, and `lit.site.cfg.py`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: LIT internals
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s look at the following diagram, which illustrates the workflow of running
+    LIT tests in the demo project we just created:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 3.1 – The forking flow of LIT in our example project'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14590_03_01.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 3.1 – The forking flow of LIT in our example project
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s take a look at this diagram in more detail:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`lit.site.cfg.py.in` is copied to `/JSMinifier/build/lit.site.cfg.py`, which
+    carries some CMake variable values.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The `llvm-lit` command is launched inside `/JSMinifier/build`. It will execute
+    `lit.site.cfg.py` first.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`lit.site.cfg.py` then uses the `load_configure` Python function to load the
+    main LIT configurations (`lit.cfg.py`) and run all the test cases.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The most crucial part of this diagram is explaining the roles of `lit.site.cfg.py`
+    and `lit.site.cfg.py.in`: many parameters, such as the absolute path to the `build`
+    folder, will remain unknown until the CMake configuration process is complete.
+    So, a *trampoline* script – that is, `lit.site.cfg.py` – is placed inside the
+    `build` folder to relay that information to the real test runner.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we learned how to write LIT configuration scripts for our out-of-tree
+    example project. We also learned how LIT works under the hood. Knowing this can
+    help you use LIT in a wide variety of projects, in addition to LLVM. In the next
+    section, we will focus on `FileCheck`, a crucial and commonly used LIT utility
+    that performs advanced pattern checking.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning useful FileCheck tricks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '`grep` command-line tool available in Unix/Linux systems, but provides a more
+    powerful yet straightforward syntax for line-based contexts. Furthermore, the
+    fact that you can put `FileCheck` directives beside the testing targets makes
+    the test cases self-contained and easy to understand.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though basic `FileCheck` syntax is easy to get hands-on with, there are many
+    other `FileCheck` functionalities that truly unleash the power of `FileCheck`
+    and greatly improve your testing experiences – creating more concise testing scripts
+    and parsing more complex program output, to name a few. This section will show
+    you some of those skills.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preparing for our example project
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `FileCheck` command-line tool needs to be built first. Similar to the previous
+    section, building one of the `check-XXX` (phony) targets in the LLVM tree is the
+    easiest way to do so. The following is an example of this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this section, we are going to use an imaginary command-line tool called
+    `js-obfuscator`, a JavaScript obfuscator, for our example. **Obfuscation** is
+    a common technique that''s used to hide intellectual properties or enforce security
+    protections. For example, we could use a real-world JavaScript obfuscator on the
+    following JavaScript code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This would transform it into the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This tool will try to make the original script as human-unreadable as possible.
+    The challenge for the testing part is to verify its correctness while still reserving
+    enough space for randomness. Simply put, `js-obfuscator` will only apply four
+    obfuscation rules:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Only obfuscate local variable names, including formal parameters. The formal
+    parameter names should always be obfuscated in *<lower case word><argument index
+    number>* format. The local variable names will always be obfuscated into a combination
+    of lowercase and uppercase letters.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: If we are declaring functions with the arrow syntax – for example, `let foo
+    = (arg1, arg2) => {…}` – the arrow and the left curly brace (`=> {`) need to be
+    put in the next line.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Replace a literal number with the same value but in a different representation;
+    for example, replacing *87* with *0x57* or *87.000*.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When you supply the tool with the `--shuffle-funcs` command-line option, shuffle
+    the declaration/appearing order of the top-level functions.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Finally, the following JavaScript code is the example to be used with the `js-obfuscator`
+    tool:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: Writing FileCheck directives
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following steps are going to fill in all the `TODO` comments that appeared
+    in the preceding code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Going according to the line number, the first task is to check whether the
+    local variables and parameters have been obfuscated properly. According to the
+    spec, formal parameters have special renaming rules (that is, *<lower case word><argument
+    index number>*), so using the normal `CHECK` directive with FileCheck''s own regex
+    syntax will be the most suitable solution here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: FileCheck uses a subset of regular expressions for pattern matching, which are
+    enclosed by either `{{…}}` or `[[…]]` symbols. We will cover the latter one shortly.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'This code looks pretty straightforward. However, the semantics of the code
+    also need to be correct once obfuscation has been performed. So, in addition to
+    checking the format, the succeeding references to those parameters need to be
+    refactored as well, which is where FileCheck''s pattern binding comes in:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Let''s not forget the second rule – the arrow and left curly brace of the function
+    header need to be put in the second line. To implement the concept of "the line
+    after," we can use the `CHECK-NEXT` directive:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, all the local variables and formal parameters are checked in `my_func1`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '// CHECK: let [[OUT:[a-zA-Z]+]] ='
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '// CHECK: [[A0]] + [[IM]] - [[A1]];'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: let BGHr =
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: r0 + jkF + r1;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Going into `my_func2`, now, it''s time to check if the literal numbers have
+    been obfuscated properly. The checking statement here is designed to accept any
+    instances/patterns *except* the original numbers. Therefore, the `CHECK-NOT` directive
+    will be sufficient here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, only one obfuscation rule needs to be verified: when the `js-obfuscator`
+    tool is supplied with an additional command-line option, `--shuffle-funcs`, which
+    effectively shuffles all top-level functions, we need to check whether the top-level
+    functions maintain certain ordering, even after they have been shuffled. In JavaScript,
+    functions are resolved when they''re called. This means that `cube`, `square`,
+    `my_func1`, and `my_func2` can have an arbitrary ordering, as long as they''re
+    placed before the `console.log(…)` statement. To express this kind of flexibility,
+    the `CHECK-DAG` directive can be pretty useful.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Adjacent `CHECK-DAG` directives will match texts in arbitrary orders. For example,
+    let''s say we have the following directives:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'These directives will match the following content:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'They will also match the following content:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'However, this freedom of ordering will not hold across either a `CHECK` or
+    `CHECK-NOT` directive. For example, let''s say we have these directives:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'These directives will match the following text:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'However, they will not match the following text:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Back to our motivated example, the obfuscation rule can be checked by using
+    the following code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The idea of the check prefix in `FileCheck` is pretty simple: you can create
+    a *check suite* that runs independently with other suites. Instead of using the
+    `CHECK` string, each suite will replace it with another string in all the directives
+    mentioned earlier (`CHECK-NOT` and `CHECK-SAME`, to name a few), including `CHECK`
+    itself, in order to distinguish it from other suites in the same file. For example,
+    you can create a suite with the `YOLO` prefix so that that part of the example
+    now looks as follows:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: $ cat test.out.js | FileCheck --check-prefix=YOLO test.js
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, let''s go back to our example. The last obfuscation rule can be solved
+    by using an alternative prefix for those `CHECK-DAG` directives:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'This must be combined with the default check suite. All the checks mentioned
+    in this section can be run in two separate commands, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this section, we have shown some advanced and useful `FileCheck` skills through
+    our example project. These skills provide you with different ways to write validation
+    patterns and make your LIT test script more concise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, we have been talking about the testing methodology, which runs tests
+    in a shell-like environment (that is, in the `ShTest` LIT format). In the next
+    section, we are going to introduce an alternative LIT framework – the TestSuite
+    framework and testing format that was originated from the `llvm-test-suite` project
+    – which provides a *different kind* of useful testing methodology for LIT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exploring the TestSuite framework
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous sections, we learned how regression tests were performed in
+    LLVM. More specifically, we looked at the `ShTest` testing format (recalling the
+    `config.test_format = lit.formats.ShTest(…)` line), which basically runs end-to-end
+    tests in a shell script fashion. The `ShTest` format provides more flexibility
+    when it comes to validating results since it can use the `FileCheck` tool we introduced
+    in the previous section, for example.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This section is going to introduce another kind of testing format: `llvm-test-suite`
+    project – a collection of test suites and benchmarks created for testing and benchmarking
+    LLVM. Similar to `ShTest`, this LIT format is also designed to run end-to-end
+    tests. However, TestSuite aims to make developers'' lives easier when they want
+    to integrate *existing* executable-based test suites or benchmark codebases. For
+    example, if you want to use the famous **SPEC benchmark** as one of your test
+    suites, all you need to do is add a build description and the expected output
+    in plain text. This is also useful when your testing logic cannot be expressed
+    using a **textual testing script**, as we saw in previous sections.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we will learn how to import an existing test suite or benchmark
+    codebase into the `llvm-test-suite` project.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Preparing for our example project
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: First, please follow the instructions at the beginning of this chapter to build
+    `llvm-test-suite`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The rest of the section is going to use a pseudo test suite project called `GeoDistance`
+    project uses C++ and a GNU `Makefile` to build a command-line tool, `geo-distance`,
+    that calculates and prints out the total distance of a path constructed by a list
+    of latitude and longitude pairs provided by the input file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It should have the following folder structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here, the `Makefile` looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To run the `geo-distance` command-line tool, use the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This prints out the floating-point distance to `stdout`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: The floating-point precision requirement here is `0.001`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Importing code into llvm-test-suite
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Basically, there are only two things we need to do to import existing test
+    suites or benchmarks into `llvm-test-suite`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use CMake as the build system
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Compose verification rules
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'To use CMake as the build system, the project folder needs to be put under
+    the `MultiSource/Applications` subdirectory inside the `llvm-test-suite` source
+    tree. Then, we need to update the enclosing `CMakeLists.txt` accordingly:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'To migrate from our GNU `Makefile` to `CMakeLists.txt`, instead of rewriting
+    it using the built-in CMake directives such as `add_executable`, LLVM provides
+    some handy functions and macros for you:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: There are some new CMake directives here. `llvm_multisource` and its sibling,
+    `llvm_singlesource`, add a new executable build target from multiple source files
+    or only a single source file, respectively. They're basically `add_executable`,
+    but as shown in the previous code, you can choose to leave the source file list
+    empty, and it will use all the C/C++ source files shown in the current directory
+    as input.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs: []
+  type: TYPE_NORMAL
+- en: If there are multiple source files but you're using `llvm_singlesource`, every
+    source file will be treated as a standalone executable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`llvm_test_data` copies any resource/data files you want to use during runtime
+    to the proper working directory. In this case, it''s the `sample_input.txt` file.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that the skeleton has been set up, it''s time to configure the compilation
+    flags using the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, TestSuite needs to know how to run the test and how to verify the
+    result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `RUN_OPTIONS` CMake variable is pretty straightforward – it provides the
+    command-line options for the testing executable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For the verification part, by default, TestSuite will use an enhanced diff to
+    compare the output of `stdout` and the exit code against files whose filename
+    end with `.reference_output`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, in our case, a `GeoDistance/geo-distance.reference_output` file
+    is created with the expected answer and exit status code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: You might find that the expected answer here is slightly different from the
+    output at the beginning of this section (`94.873467`), and that's because the
+    comparison tool allows you to designate the desired floating-point precision,
+    which is controlled by the `FP_TOLERANCE` CMake variable shown previously.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we learned how to leverage the `llvm-test-suite` project and
+    its TestSuite framework to test executables that are either from an existing codebase
+    or are unable to express testing logic using textual scripts. This will help you
+    become more efficient in testing different kinds of projects using LIT.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: LIT is a general-purpose testing framework that can not only be used inside
+    LLVM, but also arbitrary projects with little effort. This chapter tried to prove
+    this point by showing you how to integrate LIT into an out-of-tree project without
+    even needing to build LLVM. Second, we saw FileCheck – a powerful pattern checker
+    that's used by many LIT test scripts. These skills can reinforce the expressiveness
+    of your testing scripts. Finally, we presented you with the TestSuite framework,
+    which is suitable for testing different kinds of program and complements the default
+    LIT testing format.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the next chapter, we will explore another supporting framework in the LLVM
+    project: **TableGen**. We will show you that TableGen is also a *general toolbox*
+    that can solve problems in out-of-tree projects, albeit almost being exclusively
+    used by backend development in LLVM nowadays.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Currently, the source code for FileCheck – written in C++ – is still inside
+    LLVM's source tree. Try to replicate its functionality using Python ([https://github.com/mull-project/FileCheck.py](https://github.com/mull-project/FileCheck.py)),
+    which will effectively help you use FileCheck without building LLVM, just like
+    LIT!
+  prefs: []
+  type: TYPE_NORMAL

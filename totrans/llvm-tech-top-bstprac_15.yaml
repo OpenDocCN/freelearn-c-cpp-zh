@@ -1,0 +1,1524 @@
+- en: '*Chapter 12*: Learning LLVM IR Instrumentation'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we learned how to leverage various utilities to improve
+    our productivity while developing with LLVM. Those skills can give us a smoother
+    experience when diagnosing problems that are raised by LLVM. Some of these utilities
+    can even reduce the number of potential mistakes that are made by compiler engineers.
+    In this chapter, we are going to learn how instrumentation works in LLVM IR.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The **instrumentation** we are referring to here is a kind of technique that
+    inserts some *probes* into the code we are compiling in order to collect runtime
+    information. For example, we can collect information about how many times a certain
+    function was called – which is only available once the target program has been
+    executed. The advantage of this technique is that it provides extremely accurate
+    information about the target program's behavior. This information can be used
+    in several different ways. For instance, we can use the collected values to compile
+    and optimize the same code *again* – but this time, since we have accurate data,
+    we can perform more aggressive optimizations that couldn't be done previously.
+    This technique is also called **Profile-Guided Optimization** (**PGO**). In another
+    example, will be using the inserted probes to catch undesirable incidents that
+    happened at runtime – buffer overflows, race conditions, and double-free memory,
+    to name a few. The probe that's used for this purpose is also called a **sanitizer**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To implement instrumentation in LLVM, we not only need the help of LLVM pass,
+    but also the synergy between *multiple* subprojects in LLVM – **Clang**, **LLVM
+    IR Transformation**, and **Compiler-RT**. We already know about the first two
+    from earlier chapters. In this chapter, we are going to introduce Compiler-RT
+    and, more importantly, how can we *combine* these subsystems for the purpose of
+    instrumentation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the list of topics we are going to cover:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing a sanitizer
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Working with PGO
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In the first part of this chapter, we are going to see how a sanitizer is implemented
+    in Clang and LLVM, before creating a simple one by ourselves. The second half
+    of this chapter is going to show you how to use the PGO framework in LLVM and
+    how we can *extend* it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we are going to work with multiple subprojects. One of them
+    – Compiler-RT – needs to be included in your build by us modifying the CMake configuration.
+    Please open the `CMakeCache.txt` file in your build folder and add the `compiler-rt`
+    string to the value of the `LLVM_ENABLE_PROJECTS` variable. Here is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: After editing the file, launch a build with any build target. CMake will try
+    to reconfigure itself.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Once everything has been set up, we can build the components we need for this
+    chapter. Here is an example command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: This will build the `clang` tool we're all familiar with and a collection of
+    Compiler-RT libraries, which we are going to introduce shortly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can find the sample code for this chapter in the same GitHub repository:
+    [https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter12](https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter12).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing a sanitizer
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: A sanitizer is a kind of technique that checks certain runtime properties of
+    the code (`probe`) that's inserted by the compiler. People usually use a sanitizer
+    to ensure program correctness or enforce security policies. To give you an idea
+    of how a sanitizer works, let's use one of the most popular sanitizers in Clang
+    as an example – the **address sanitizer**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: An example of using an address sanitizer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Let''s assume we have some simple C code, such as the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code converted the command-line arguments into integers and stored
+    them in a buffer of size 3\. Then, we printed them out.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You should be able to easily spot an outstanding problem: the value of `argc`
+    can be arbitrarily big when it''s larger than 3 – the size of `buffer`. Here,
+    we are storing the value in an *invalid* memory location. However, when we compile
+    this code, the compiler will say nothing. Here is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding command, even if we enable all the compiler warnings via the
+    `-Wall` flag, `clang` won't complain about the potential bug.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we try to execute the `buffer_overflow` program, the program will crash
+    at some time point after we pass more than three command-line arguments to it;
+    for example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: What's worse, the number of command-line arguments to crash `buffer_overflow`
+    actually *varies* from machine to machine. This makes it even more difficult to
+    debug if the example shown here were a real-world bug. To summarize, the problem
+    we're encountering here is caused by the fact that `buffer_overflow` only goes
+    rogue on *some* inputs and the compiler failed to catch the problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let''s try to use an address sanitizer to catch this bug. The following
+    command asks `clang` to compile the same code with an address sanitizer:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s execute the program again. Here is the output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Instead of just crashing, the address sanitizer gave us many details about
+    the issue that was raised at runtime: the sanitizer told us that it detected a
+    *buffer overflow* on the stack, which might be the `buffer` variable.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: These messages were extremely useful. Imagine that you are working on a much
+    more complicated software project. When a strange memory bug occurs, rather than
+    just crash or silently change the program's logic, the address sanitizer can point
+    out the problematic area – with high accuracy – right away.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To go a little deeper into its mechanisms, the following diagram illustrates
+    how the address sanitizer detects the buffer overflow:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 12.1 – Instrumentation code inserted by the address sanitizer'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14590_12.1.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 12.1 – Instrumentation code inserted by the address sanitizer
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here, we can see that the address sanitizer is effectively inserting a boundary
+    check into the array index that's used for accessing `buffer`. With this extra
+    check – which will be executed at runtime – the target program can bail out with
+    error details before violating the memory access. More generally speaking, during
+    the compilation, a sanitizer inserts some instrumentation code (into the target
+    program) that will eventually be executed at runtime to check or *guard* certain
+    properties.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Detecting overflow using an address sanitizer
+  prefs: []
+  type: TYPE_NORMAL
+- en: The preceding diagram shows a simplified version of how an address sanitizer
+    works. In reality, the address sanitizer will leverage multiple strategies to
+    monitor memory access in a program. For example, an address sanitizer can use
+    a special memory allocator that allocates memory with `traps` put at the invalid
+    memory region.
+  prefs: []
+  type: TYPE_NORMAL
+- en: While an address sanitizer is specialized in catching illegal memory access,
+    a **ThreadSanitizer** can be used to catch data race conditions; that is, invalid
+    access from multiple threads on the same chunk of data. Some other examples of
+    sanitizers in Clang are the **LeakSanitizer**, which is used for detecting sensitive
+    data such as passwords being leaked, and **MemorySanitizer**, which is used for
+    detecting reads to uninitialized memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Of course, there are some downsides to using sanitizers. The most prominent
+    problem is the performance impact: using a thread sanitizer (in Clang) as an example,
+    programs that are compiled with one are *5~15 times slower* than the original
+    version. Also, since sanitizers insert extra code into the program, it might hinder
+    some optimization opportunities, or even affect the original program''s logic!
+    In other words, it is a trade-off between the *robustness* and *performance* of
+    the target program.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: With that, you've learned about the high-level idea of a sanitizer. Let's try
+    to create a real one by ourselves to understand how Clang and LLVM implement a
+    sanitizer. The following section contains more code than any of the examples in
+    previous chapters, not to mention the changes are spread across different subprojects
+    in LLVM. To focus on the most important knowledge, we won't go into the details
+    of some *supporting* code – for example, changes that are made to CMake build
+    scripts. Instead, we will go through them by providing a brief introduction and
+    pointing out where you can find it in this book's GitHub repository.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's start by providing an overview of the project we are going to create.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a loop counter sanitizer
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To (slightly) simplify our task, the sanitizer we are going to create – a loop
+    counter sanitizer, or **LPCSan** for short – looks just like a sanitizer except
+    that it is not checking any serious program properties. Instead, we want to use
+    it to print out the real, concrete **trip count** – the number of iterations –
+    of a loop, which is only available during runtime.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, let''s assume we have the following input code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can compile it with a LPCSan using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that compiling with optimization greater than `-O0` is necessary; we will
+    explain why later.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we execute `test_lpcsan` (with some command-line argument), we can print
+    out the precise trip count of the loop in the `foo` function. For example, look
+    at the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The message highlighted in the preceding code was printed by our sanitizer code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let''s dive into the steps for creating the LPCSan. We will divide this
+    tutorial into three parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing an IR transformation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adding Compiler-RT components
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Adding the LPCSan to Clang
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We will start with the IR transformation part of this sanitizer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing an IR transformation
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Previously, we learned that an address sanitizer – or just a sanitizer in general
+    – usually inserts code into the target program to check certain runtime properties
+    or collect data. In [*Chapter 9*](B14590_09_Final_JC_ePub.xhtml#_idTextAnchor127),
+    *Working with PassManager and AnalysisManager*, and [*Chapter 10*](B14590_10_Final_JC_ePub.xhtml#_idTextAnchor141),
+    *Processing LLVM IR*, we learned how to modify/transform LLVM IR, including inserting
+    new code into it, so this seems to be a good starting point for crafting our LPCSan.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we are going to develop an LLVM pass called `LoopCounterSanitizer`
+    that inserts special function calls to collect the exact trip count of every loop
+    in `Module`. Here are the detailed steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, let''s create two files: `LoopCounterSanitizer.cpp` under the `llvm/lib/Transforms/Instrumentation`
+    folder and its corresponding header file inside the `llvm/include/llvm/Transforms/Instrumentation`
+    folder. Inside the header file, we will place the declaration of this pass, as
+    shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, in `LoopCounterSanitizer.cpp`, we are placing the skeleton code for
+    our pass, as shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To figure out the exact trip count, the `Function` instance stored in `LPCSetStartFn`
+    will be used to collect the *initial* induction variable value of a loop. On the
+    other hand, the `Function` instance stored in `LPCAtEndFn` will be used to collect
+    the *final* induction variable value and the step value of the loop. To give you
+    a concrete idea of how these two `Function` instances work together, let''s assume
+    we have the following pseudocode as our input program:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the preceding code, the `S`, `E`, and `ST` variables represent the initial,
+    final, and step values of a loop, respectively. The goal of the `LoopCounterSanitizer`
+    pass is to insert `LPCSetStartFn` and `LPCAtEndFn` in the following way:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: static int CurrentStartVal = 0;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: void lpc_set_start(int start) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: LPCSetStartFn and LPCAtEndFn, it's time to take a look at how initializeSanitizerFuncs
+    initializes them.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Here is the code inside `initializeSanitizerFuncs`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Recall that in [*Chapter 10*](B14590_10_Final_JC_ePub.xhtml#_idTextAnchor141),
+    *Processing LLVM IR*, we learned about several utility classes for working with
+    `Loop`. One of them – `LoopBounds` – can give us the boundary of a `Loop`. We
+    can do this by including the start, end, and step values of an induction variable,
+    which is exactly the information we are looking for. Here is the code that tries
+    to retrieve a `LoopBounds` instance:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '`StartVal` is the `Value` instance to be collected by `__lpcsan_set_loop_start`,
+    whereas `__lpcsan_at_loop_end` is going to collect `EndVal` and `StepVal` at runtime.
+    Now, the question is, *where* should we insert function calls to `__lpcsan_set_loop_start`
+    and `__lpcsan_at_loop_end` to correctly collect those values?'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The rule of thumb is that we need to insert those function calls after the *definition*
+    of those values. While we can find the exact locations where those values were
+    defined, let's try to simplify the problem by inserting instrumentation function
+    calls at some fixed locations – locations where our target values are *always*
+    available.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: For `__lpcsan_set_loop_start`, we are inserting it at the end of the `getTerminator`
+    to get the last `Instruction` from the header block. Then, we used `IRBuilder<>`
+    – with the last instruction as the insertion point – to insert new `Instruction`
+    instances.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Before we can pass `StartVal` as an argument to the new `__lpcsan_set_loop_start`
+    function call, we need to convert its IR type (represented by the `Type` class)
+    into a compatible one. `IRBuilder::CreateInstCast` is a handy utility that automatically
+    generates either an instruction to *extend* the integer bit width or an instruction
+    to *truncate* the bit width, depending on the given `Value` and `Type` instances.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Finally, we can create a function call to `__lpcsan_set_loop_start` via `IRBuilder::CreateCall`,
+    with `StartVal` as the function call argument.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'For `__lpcsan_at_loop_end`, we are using the same trick to collect the runtime
+    values of `EndVal` and `StepVal`. Here is the code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Before we wrap up this section, we need to edit a few more files to make sure
+    everything works. Please look at the `Changes-LLVM.diff` file in the sample code
+    folder for this chapter. Here is the summary of the changes that were made in
+    other supporting files:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'i. Changes in `llvm/lib/Transforms/Instrumentation/CMakeLists.txt`: Add our
+    new pass source file to the build.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'ii. Changes in `llvm/lib/Passes/PassRegistry.def`: Add our pass to the list
+    of available passes so that we can test it using our old friend `opt`.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: With that, we've finally finished making all the necessary modifications to
+    the LLVM part.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we move on to the next section, let''s test our newly created `LoopCounterSanitizer`
+    pass. We are going to be using the same C code we saw earlier in this section.
+    Here is the function that contains the loop we want to instrument:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Note that although we didn''t explicitly check the loop form in our pass, some
+    of the APIs that were used in the pass actually required the loop to be *rotated*,
+    so please generate the LLVM IR code with an O1 optimization level to make sure
+    the loop rotation''s Pass has kicked in:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the simplified LLVM IR for the `foo` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The highlighted labels are the preheader and loop body blocks for this loop.
+    Since this loop has been rotated, the `for.body` block is both the header, latch,
+    and exiting block for this loop.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let''s transform this IR with `opt` using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the `–passes` command-line option, we asked `opt` to run our `LoopCounterSanitizer`
+    pass (with the name `lpcsan`, which is registered in the `PassRegistry.def` file).
+    The enclosing `loop(…)` string is simply telling `opt` that `lpcsan` is a loop
+    pass (you can actually omit this decoration since `opt` can find the right pass
+    most of the time).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is the simplified result:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, `__lpcsan_set_loop_start` and `__lpcsan_at_loop_end` have been
+    correctly inserted into the header block and exit block, respectively. They are
+    also collecting the desired values related to the loop trip count.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, the biggest question is: where are the *function bodies* for `__lpcsan_set_loop_start`
+    and `__lpcsan_at_loop_end`? Both only have declarations in the preceding IR code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we will use Compiler-RT to answer this question.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding the Compiler-RT component
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The name **Compiler-RT** stands for **Compiler RunTime**. The usage of *runtime*
+    is a little ambiguous here because too many things can be called a runtime in
+    a normal compilation pipeline. But the truth is that Compiler-RT *does* contain
+    a wide range of libraries for completely different tasks. What these libraries
+    have in common is that they provide *supplement* code for the target program to
+    implement enhancement features or functionalities that were otherwise absent.
+    It is important to remember that Compiler-RT libraries are NOT used for building
+    a compiler or related tool – they should be linked with the program we are compiling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'One of the most used features in Compiler-RT is the **builtin function**. As
+    you might have heard, more and more computer architectures nowadays support *vector
+    operation* natively. That is, you can process multiple data elements at the same
+    time with the support from hardware. Here is some example code, written in C,
+    that uses vector operations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code used a non-standardized (currently, you can only use this
+    syntax in Clang and GCC) C/C++ vector extension to declare two vectors, `v1` and
+    `v2`, before adding them to yield a third one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On X86-64 platforms, this code will be compiled to use one of the vector instruction
+    sets, such as `for-loop` to replace vector summation in this case. More specifically,
+    whenever we see a vector summation at compilation time, we replace it with a call
+    to a function that contains the synthesis implementation using `for-loop`. The
+    function body can be put anywhere, as long as it is eventually linked with the
+    program. The following diagram illustrates this process:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 12.2 – Workflow of the Compiler-RT builtin'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14590_12.2.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 12.2 – Workflow of the Compiler-RT builtin
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As you may have noticed, the workflow shown here is similar to our requirement
+    in the LPCSan: in the previous section, we developed an LLVM pass that inserted
+    extra function calls to collect the loop trip count, but we still need to implement
+    those collector functions. If we leverage the workflow shown in the preceding
+    diagram, we can come up with a design, as shown in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 12.3 – Workflow of the Compiler-RT LPCSan component'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14590_12.3.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 12.3 – Workflow of the Compiler-RT LPCSan component
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The previous diagram shows that the function bodies of `__lpcsan_set_loop_start`
+    and `__lpcsan_at_loop_end` are put inside a Compiler-RT library that will eventually
+    be linked with the final binary. Inside these two functions, we calculate the
+    trip count using the input arguments and print the result. In the rest of this
+    section, we''ll show you how to create such a Compiler-RT library for the LPCSan.
+    Let''s get started:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, switch the folder to `llvm-project/compiler-rt`, the root of Compiler-RT.
+    Inside this subproject, we must create a new folder called `lib/lpcsan` before
+    we put a new `lpcsan.cpp` file inside it. Within this file, let''s create the
+    skeleton for our instrumentation functions. Here is the code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we will add the necessary code to these two functions. Here is how we
+    do this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now that we have implemented the core logic, it''s time to build this library.
+    Inside the `lib/lpcsan` folder, create a new `CMakeLists.txt` file and insert
+    the following code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To successfully build the LPCSan, we still need to make some changes in Compiler-RT.
+    The `Base-CompilerRT.diff` patch in the same code folder provides the rest of
+    the changes that are necessary to build our sanitizer. Apply it to Compiler-RT''s
+    source tree. Here is the summary of this patch:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: i. Changes in `compiler-rt/cmake/config-ix.cmake` basically specify the supported
+    architectures and operating systems of the LPCSan. The `LPCSAN_SUPPORTED_ARCH`
+    CMake variable we saw in the previous snippet comes from here.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: ii. The entire `compiler-rt/test/lpcsan` folder is actually a placeholder. For
+    some reason, having tests is a *requirement* for every sanitizer in Compiler-RT
+    – which is different from LLVM. Therefore, we are putting an empty test folder
+    here to pass this requirement that's being imposed by the build infrastructure.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: These are all the steps for producing a Compiler-RT component for our LPCSan.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To just build our LPCSan library, invoke the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: Unfortunately, we can't test this LPCSan library until we've modified the compilation
+    pipeline in Clang. In the last part of this section, we are going to learn how
+    to achieve this task.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Adding the LPCSan to Clang
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In the previous section, we learned how Compiler-RT libraries provide supplement
+    functionalities to the target program or assist with special instrumentation,
+    such as the sanitizer we just created. In this section, we are going to put everything
+    together so that we can use our LPCSan simply by passing the `-fsanitize=loop-counter`
+    flag to `clang`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Recall that in *Figure 12.3*, Compiler-RT libraries need to be linked with
+    the program we are compiling. Also, recall that in order to insert the instrumentation
+    code into the target program, we must run our `LoopCounterSanitizer` pass. In
+    this section, we are going to modify the compilation pipeline in Clang so that
+    it runs our LLVM pass at a certain time and sets up the correct configuration
+    for our Compiler-RT library. More specifically, the following diagram shows the
+    tasks that each component needs to complete to run our LPCSan:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 12.4 – Tasks for each component in the pipeline'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14590_12.4.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 12.4 – Tasks for each component in the pipeline
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here are the descriptions for each of the numbers (enclosed in circles) in
+    the preceding diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The driver needs to recognize the `-fsanitize=loop-counter` flag.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When the frontend is about to generate LLVM IR from an `LoopCounterSanitizer`
+    pass.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The LLVM pass pipeline needs to run our `LoopCounterSanitizer` (we don't need
+    to worry about this task if the previous task is done correctly).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The linker needs to link our Compiler-RT library to the target program.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Although this workflow looks a little scary, don''t be overwhelmed by the prospective
+    workload – Clang can actually do most of these tasks for you, as long as you provide
+    sufficient information. In the rest of this section, we''ll show you how to implement
+    the tasks shown in the preceding diagram to fully integrate our LPCSan into the
+    Clang compilation pipeline (the following tutorial works inside the `llvm-project/clang`
+    folder). Let''s get started:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we must modify `include/clang/Basic/Sanitizers.def` to add our sanitizer:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, let''s work on the driver part. Open `include/clang/Driver/SanitizerArgs.h`
+    and add a new utility method, `needsLpcsanRt`, to the `SanitizerArgs` class. Here
+    is the code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The utility method we created here can be used by other places in the driver
+    to check if our sanitizer needs a Compiler-RT component.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Now, let''s navigate to the `lib/Driver/ToolChains/CommonArgs.cpp` file. Here,
+    we''re adding a few lines to the `collectSanitizerRuntimes` function. Here is
+    the code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The preceding snippet effectively makes the linker link the correct Compiler-RT
+    library to the target binary.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'The last change we will make to the driver is in `lib/Driver/ToolChains/Linux.cpp`.
+    Here, we add the following lines to the `Linux::getSupportedSanitizers` method:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The previous code is essentially telling the driver that we support the LPCSan
+    in the current toolchain – the toolchain for Linux. Note that to simplify our
+    example, we are only supporting the LPCSan in Linux. If you want to support this
+    custom sanitizer in other platforms and architectures, modify the other toolchain
+    implementations. Please refer to [*Chapter 8*](B14590_08_Final_JC_ePub.xhtml#_idTextAnchor108),
+    *Working with Compiler Flags and Toolchains*, for more details if needed.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Finally, we are going to insert our `LoopCounterSanitizer` pass into the LLVM
+    pass pipeline. Open `lib/CodeGen/BackendUtil.cpp` and add the following lines
+    to the `addSanitizers` function:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Last but not least, we must make a small modification to the build system.
+    Open the `runtime/CMakeLists.txt` file and change the following CMake variable:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'These are all the steps necessary to support the LPCSan in Clang. Now, we can
+    finally use the LPCSan in the same way we showed you at the beginning of this
+    section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this section, we learned how to create a sanitizer. A sanitizer is a useful
+    tool for capturing runtime behaviors without modifying the original program code.
+    The ability to create a sanitizer increases the flexibility for compiler developers
+    to create custom diagnosing tools tailored for their own use cases. Developing
+    a sanitizer requires comprehensive knowledge of Clang, LLVM, and Compiler-RT:
+    creating a new LLVM pass, making a new Compiler-RT component, and customizing
+    the compilation pipeline in Clang. You can use the content in this section, to
+    reinforce what you''ve learned in previous chapters of this book.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the last section of this chapter, we are going to look at one more instrumentation
+    technique: **PGO**.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with PGO
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous section, we learned how a sanitizer assists developers in performing
+    sanity checks with higher precision using data that is only available at runtime.
+    We also learned how to create a custom sanitizer. In this section, we will follow
+    up on the idea of leveraging runtime data. We are going to learn an alternative
+    use for such information – using it for compiler optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'PGO is a technique that uses statistics that have been collected during runtime
+    to enable more aggressive compiler optimizations. The *profile* in its name refers
+    to the runtime data that''s been collected. To give you an idea of how such data
+    enhances an optimization, let''s assume we have the following C code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this code, we have three functions: `foo`, `bar`, and `zoo`. The first function
+    conditionally calls the latter two.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When we try to optimize this code, the optimizer usually tries to *inline* callee
+    functions into the caller. In this case, `bar` or `zoo` might be inlined into
+    `foo`. However, if either `bar` or `zoo` has a large function body, inlining *both*
+    might bloat the size of the final binary. Ideally, it will be great if we could
+    inline only the one that executes the most frequently. Sadly, from a statistics
+    point of view, we have no clue about which function has the highest execution
+    frequency, because the `foo` function conditionally calls either of them based
+    on a (non-constant) variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With PGO, we can collect the execution frequencies of both `bar` and `zoo`
+    at runtime and use the data to compile (and optimize) the same code *again*. The
+    following diagram shows the high-level overview of this idea:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 12.5 – PGO workflow'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14590_12.5.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 12.5 – PGO workflow
+  prefs: []
+  type: TYPE_NORMAL
+- en: Here, the first compilation phase compiled and optimized the code normally.
+    After we executed the compiled program (an arbitrary number of times), we were
+    able to collect the profile data files. In the second compilation phase, we not
+    only optimized the code, as we did previously, but also integrated the profile
+    data into the optimizations to make them act more aggressively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are primarily two ways for PGO to collect runtime profiling data: inserting
+    **instrumentation** code or leveraging **sampling** data. Let''s introduce both.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introduction to instrumentation-based PGO
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Instrumentation-based PGO inserts instrumentation code into the target program
+    during the first compilation phase. This code measures the execution frequency
+    of the program constructions we're interested in – for example, basic blocks and
+    functions – and writes the result in a file. This is similar to how a sanitizer
+    works.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Instrumentation-based PGO usually generates profiling data with higher precision.
+    This is because the compiler can insert instrumentation code in a way that provides
+    the greatest benefit for other optimizations. However, just like the sanitizer,
+    instrumentation-based PGO changes the execution flow of the target program, which
+    increases the risk of performance regression (for the binary that was generated
+    from the first compilation phase).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introduction to sampling-based PGO
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: Sampling-based PGO uses *external* tools to collect profiling data. Developers
+    use profilers such as `perf` or `valgrind` to diagnose performance issues. These
+    tools usually leverage advanced system features or even hardware features to collect
+    the runtime behavior of a program. For example, `perf` can give you insights into
+    branch prediction and cache line misses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since we are leveraging data from other tools, there is no need to modify the
+    original code to collect profiles. Therefore, sampling-based PGO usually has an
+    extremely low runtime overhead (usually, this is less than 1%). Also, we don't
+    need to recompile the code for profiling purposes. However, profiling data that's
+    generated in this way is usually less precise. It's also more difficult to map
+    the profiling data back to the original code during the second compilation phase.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the rest of this section, we are going to focus on instrumentation-based
+    PGO. We are going to learn how to leverage it with LLVM IR. Nevertheless, as we
+    will see shortly, these two PGO strategies in LLVM share lots of common infrastructures,
+    so the code is portable. Here is the list of topics we are going to cover:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with profiling data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Learning about the APIs for accessing profiling data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The first topic will show us how to create and use instrumentation-based PGO
+    profiles with Clang, as well as some of the tools that can help us inspect and
+    modify profiling data. The second topic will give you more details on how to access
+    profiling data using LLVM APIs. This is useful if you want to create your own
+    PGO pass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with profiling data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In this section, we are going to learn how to use generate, inspect, and even
+    modify instrumentation-based profiling data. Let''s start with the following example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, `get_random` is a function that generates a random number
+    from 1 to 10 with uniform distribution. In other words, the highlighted `if` statement
+    in the `foo` function should have a 50% chance of being taken. In addition to
+    the `foo` function, the trip count of the `for` loop within `main` depends on
+    the number of command-line arguments there are.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let''s try to build this code with instrumentation-based PGO. Here are
+    the steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first thing we are going to do is generate an executable for PGO profiling.
+    Here is the command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we must run the `pgo` program with three command-line arguments:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: You might get a totally different output since there is only a 50% of chance
+    of the string being printed.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'After this, the `pgo_prof.dir` folder should contain the `default_<hash>_<n>.profraw`
+    file, as shown here:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The *hash* in the filename is a hash that's calculated based on your code.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'We cannot directly use the `*.profraw` file for our second compilation phase.
+    Instead, we must convert it into another kind of binary form using the `llvm-profdata`
+    tool. Here is the command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, we can use the file we just merged for the second stage of compilation.
+    Here is the command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Here, the `-fprofile-use` option told `clang` to use the profiling data stored
+    in `pgo_prof.profdata` to optimize the code. We are going to look at the LLVM
+    IR code after we've done this optimization.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Open `pgo.after.ll` and navigate to the `foo` function. Here is a simplified
+    version of `foo`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding LLVM IR code, two places were different from the original IR;
+    that is, the `!prof` tags that followed after both the function header and the
+    branch instruction, which correspond to the `if(get_random() > 5)` code we saw
+    earlier.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In LLVM IR, we can attach `''!''`) in the textual LLVM IR.`!prof`, `!71`, and
+    `!72` in the preceding code are metadata tags that represent the profiling data
+    we collected. More specifically, if we have profiling data associated with an
+    IR unit, it always starts with `!prof`, followed by another metadata tag that
+    contains the required values. These metadata values are put at the very bottom
+    of the IR file. If we navigate there, we will see the content of `!71` and `!72`.
+    Here is the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: These two metadata are tuples with two and three elements. `!71`, as suggested
+    by its first element, represents the number of times the `foo` function was called
+    (in this case, it was called 110 times).
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand,`!72` marks the number of times each branch in the `if(get_random()
+    > 5)` statement was taken. In this case, the true branch was taken 57 times and
+    the false branch was taken 54 times. We got these numbers because we were using
+    uniform distribution for random number generation (namely, a ~50% chance for each
+    branch).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the second part of this section, we will learn how to access these values
+    for the sake of developing a more aggressive compiler optimization. Before we
+    do that, though, let's take a deeper look at the profiling data file we just collected.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `llvm-profdata` tool we just used can not only help us convert the format
+    of the profiling data, but also gives us a quick preview of its content. The following
+    command prints out the summary for `pgo_prof.profdata`, including the profiling
+    values that were collected from every function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we can see the profiling data entries for each function. Each entry has
+    a list of numbers representing the *execution frequency* of all the enclosing
+    basic blocks.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Alternatively, you can inspect the same profiling data file by converting it
+    into a textual file first. Here is the command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `*.proftext` file is in a human-readable textual format where all the profiling
+    data is simply put in its own line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This textual representation can actually be converted *back* into the `*.profdata`
+    format using a similar command. Here is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: Therefore, `*.proftext` is especially useful when you want to *edit* the profiling
+    data manually.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we dive into the APIs for PGO, there is one more concept we need to
+    learn about: the instrumentation level.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the instrumentation level
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'So far, we''ve learned that instrumentation-based PGO can insert instrumentation
+    code for collecting runtime profiling data. On top of this fact, the places where
+    we insert this instrumentation code and its granularity also matter. This property
+    is called the **instrumentation level** in instrumentation-based PGO. LLVM currently
+    supports three different instrumentation levels. Here are descriptions of each:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`-fprofile-generate` command-line option we introduced earlier will generate
+    profiling data with this instrumentation level. For example, let''s say we have
+    the following C code:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The corresponding IR – without enabling instrumentation-based PGO – is shown
+    here:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: $ clang @__profc_foo.0 or @__profc_foo.1 – by one. The values in these two variables
+    will eventually be exported as the profiling data for branches, representing the
+    number of times each branch was taken. This instrumentation level provides decent
+    precision but suffers from compiler changes. More specifically, if Clang changes
+    the way it emits LLVM IR, the places where the instrumentation code will be inserted
+    will also be different. This effectively means that for the same input code, the
+    profiling data that's generated with an older version of LLVM might be incompatible
+    with the profiling data that's generated with a newer LLVM.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '`Stmt` AST node inside an `IfStmt` (an AST node). With this method, the instrumentation
+    code is barely affected by compiler changes and we can have a more stable profiling
+    data format across different compiler versions. The downside of this instrumentation
+    level is that it has less precision than the IR instrumentation level.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: You can adopt this instrumentation level by simply using the `-fprofile-instr-generate`
+    command-line option in place of `-fprofile-generate` when invoking `clang` for
+    the first compilation. You don't need to change the command for the second compilation,
+    though.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '`clang` with two PGO command-line options, `-fprofile-use` and `-fcs-profile-generate`,
+    with the path to the profiling file from the previous step and the prospective
+    output path, respectively. When we use `llvm-profdata` to do the post-processing,
+    we are merging all the profiling data files we have:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Finally, feed the combined profiling file into Clang so that it can use this
+    context-sensitive profiling data to get a more accurate portrait of the program's
+    runtime behavior.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Note that different instrumentation levels only affect the accuracy of the profiling
+    data; they don't affect how we *retrieve* this data, which we are going to talk
+    about in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the last part of this section, we are going to learn how to access this profiling
+    data inside an LLVM pass via the APIs provided by LLVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning about the APIs for accessing profiling data
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: In the previous section, we learned how to run the instrumentation-based PGO
+    using Clang and view the profiling data file using `llvm-profdata`. In this section,
+    we are going to learn how to access that data within an LLVM pass to help us develop
+    our own PGO.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we go into the development details, let''s learn how to *consume* those
+    profiling data files into `opt`, since it''s easier to test individual LLVM pass
+    using it. Here is a sample command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'There are two keys in the preceding command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Use `-pgo-test-profile-file` to designate the profiling data file you want to
+    put in.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The "`pgo-instr-use`" string represents the `PGOInstrumentaitonUse` pass, which
+    reads (instrumentation-based) profiling files and *annotates* the data on an LLVM
+    IR. However, it is not run by default, even in the predefined optimization levels
+    (that is, O0 ~ O3, Os, and Oz). Without this pass being ahead in the Pass pipeline,
+    we are unable to access any profiling data. Therefore, we need to explicitly add
+    it to the optimization pipeline. The preceding sample command demonstrated how
+    to run it before a custom LLVM pass, `my-pass`, in the pipeline. If you want to
+    run it before any of the predefined optimization pipelines – for instance, O1
+    – you must specify the `--passes="pgo-instr-use,default<O1>"` command-line option.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Now, you might be wondering, what happens after the profiling data is read into
+    `opt`? It turns out that the LLVM IR file that was generated by the *second* compilation
+    phase – `pgo.after.ll` – has provided us with some answers to this question.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In `pgo.after.ll`, we saw that some branches were *decorated* with **metadata**
+    specifying the number of times they were taken. Similar metadata appeared in functions,
+    which represented the total number of times those functions were called.
+  prefs: []
+  type: TYPE_NORMAL
+- en: More generally speaking, LLVM directly *combines* the profiling data – read
+    from the file – with its associated IR constructions via **metadata**. The biggest
+    advantage of this strategy is that we don't need to carry the raw profiling data
+    throughout the entire optimization pipeline – the IR itself contains this profiling
+    information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, the question becomes, how can we access metadata that''s been attached
+    to IR? LLVM''s metadata can be attached to many kinds of IR units. Let''s take
+    a look at the most common one first: accessing metadata attached to an `Instruction`.
+    The following code shows us how to read the profiling metadata –`!prof !71`, which
+    we saw previously – that''s attached to a branch instruction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding snippet, we are using `BasicBlock::getTerminator` to get the
+    last instruction in a basic block, which is a branch instruction most of the time.
+    Then, we tried to retrieve the profiling metadata with the `MD_prof` metadata.
+    `BrWeightMD` is the result we are looking for.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The type of `BrWeightMD`, `MDNode`, represents a single metadata node. Different
+    `MDNode` instances can be *composed* together. More specifically, a `MDNode` instance
+    can use other `MDNode` instances as its operands – similar to the `Value` and
+    `User` instances we saw in [*Chapter 10*](B14590_10_Final_JC_ePub.xhtml#_idTextAnchor141),
+    *Processing LLVM IR*. The compound `MDNode` can express more complex concepts.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, in this case, each operand in `BrWeightMD` represents the number
+    of times each branch was taken. Here is the code to access them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, the taken counts are also expressed as `MDNode`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Operand indices for both branches
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the data for both branches is placed at the operands starting from
+    index 1 rather than index 0.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If we want to convert these branch `MDNode` instances into constants, we can
+    leverage a small utility provided by the `mdconst` namespace. Here is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code *unwrapped* an `MDNode` instance and extracted the underlying
+    `ConstantInt` instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For `Function`, we can get the number of times it was called in an even easier
+    way. Here is the code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`Function` is using a slightly different way to present its called frequency.
+    But retrieving the numerical profiling value is still pretty easy, as shown in
+    the preceding snippet.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is worth noting that although we only focused on instrumentation-based PGO
+    here, for *sampling*-based PGO, LLVM also uses the same programming interface
+    to expose its data. In other words, even if you're using profiling data that's
+    been collected from sampling tools with a different `opt` command, the profiling
+    data will also be annotated on IR units and you can still access it using the
+    aforementioned method. In fact, the tools and APIs we are going to introduce in
+    the rest of this section are mostly profiling-data-source agnostic.
+  prefs: []
+  type: TYPE_NORMAL
+- en: So far, we have been dealing with real values that have been retrieved from
+    the profiling data. However, these low-level values cannot help us go far in terms
+    of developing a compiler optimization or program analysis algorithm – usually,
+    we are more interested in high-level concepts such as "functions that are executed
+    *most frequently*" or "branches that are *least taken*". To address these demands,
+    LLVM builds several analyses on top of profiling data to deliver such high-level,
+    structural information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we are going to introduce some of these analyses and their
+    usages in LLVM Pass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using profiling data analyses
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this section, we are going to learn three analysis classes that can help
+    us reason about the execution frequency of basic blocks and functions at runtime.
+    They are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`BranchProbabilityInfo`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`BlockFrequencyInfo`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ProfileSummaryInfo`'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This list is ordered by their analyzing scope in the IR – from local to global.
+    Let's start with the first two.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using BranchProbabilityInfo and BlockFrequencyInfo
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'In the previous section, we learned how to access the profiling metadata that''s
+    attached to each branch instruction – the `BranchProbabilityInfo` class. Here
+    is some example code showing how to use it in a (function) Pass:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code retrieved a `BranchProbabilityInfo` instance, which is the
+    result of `BranchProbabilityAnalysis`, and tried to get the weight from the entry
+    block to its first successor block.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The returned value, a `BranchProbability` instance, gives you the branch''s
+    probability in the form of a percentage. You can use `BranchProbability::getNumerator`
+    to retrieve the value (the "denominator" is 100 by default). The `BranchProbability`
+    class also provides some handy utility methods for performing arithmetic between
+    two branch probabilities or scaling the probability by a specific factor. Although
+    we can easily tell which branch is more likely to be taken using `BranchProbabilityInfo`,
+    without additional data, we can''t tell the branch''s probability (to be taken)
+    in the *whole function*. For example, let''s assume we have the following CFG:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 12.6 – CFG with nested branches'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/B14590_12.6.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 12.6 – CFG with nested branches
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the preceding diagram, we have profiling counter values for the following
+    basic blocks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**if.then4**: 2'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**if.else**: 10'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**if.else7**: 20'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If we *only* look at the branch weight metadata toward blocks `if.then4` and
+    `if.else` – that is, the true and false branches for `if.then`, respectively –
+    we might come under the *illusion* that the `if.else` block has a ~83% chance
+    of being taken. But the truth is, it only has a ~31% chance because the control
+    flow has a higher probability to go into `if.else7` before even entering the `if.then`
+    region. Of course, in this case, we can do simple math to figure out the correct
+    answer, but when the CFG is getting bigger and more complex, we might have a hard
+    time doing this by ourselves.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `BlockFrequencyInfo` class provides a shortcut to this problem. It can
+    tell us the frequency of each basic block to be taken under the context of its
+    enclosing function. Here is an example of its usage in a Pass:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code retrieved a `BlockFrequencyInfo` instance, which is the result
+    of `BlockFrequencyAnalysis`, and tried to evaluate the block frequency of each
+    basic block in the function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Similar to the `BranchProbability` class, `BlockFrequency` also provides nice
+    utility methods to calculate with other `BlockFrequency` instances. But different
+    from `BranchProbability`, the numeric value that''s retrieved from `BlockFrequency`
+    is not presented as a percentage. More specifically, `BlockFrequency::getFrequency`
+    returns an integer that is the frequency *relative* to the entry block of the
+    current function. In other words, to get a percentage-based frequency, we can
+    use the following snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE57]'
+  prefs: []
+  type: TYPE_PRE
+- en: The highlighted `FreqInPercent` is the block frequency of `BB`, expressed as
+    a percentage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`BlockFrequencyInfo` calculates the frequency of a specific basic block under
+    the context of a function – but what about the entire *module*? More specifically,
+    if we bring a `ProfileSummaryInfo`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using ProfileSummaryInfo
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The `ProfileSummaryInfo` class gives you a global view of all the profiling
+    data in a `Module`. Here is an example of retrieving an instance of it inside
+    a module Pass:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE58]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`ProfileSummaryInfo` provides a wide variety of functionalities. Let''s take
+    a look at three of its most interesting methods:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`isFunctionEntryCold/Hot(Function*)`: These two methods compare the entry count
+    of a `Function` – which effectively reflects the number of times a function was
+    called –against that of other functions in the same module and tell us if the
+    inquiry function is ranking high or low in this metric.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`isHot/ColdBlock(BasicBlock*, BlockFrequencyInfo&)`: These two methods work
+    similarly to the previous bullet one but compare the execution frequency of a
+    `BasicBlock` against *all* the other blocks in the module.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`isFunctionCold/HotInCallGraph(Function*, BlockFrequencyInfo&)`: These two
+    methods combine the methods from the previous two bullet points they can tell
+    you whether a function is considered hot or cold based on its entry count or the
+    execution frequency of its enclosing basic blocks. This is useful when a function
+    has a low entry count – that is, it was not called often – but contains a *loop*
+    that has extremely a high basic block execution frequency. In this case, the `isFunctionHotInCallGraph`
+    method can give us a more accurate assessment.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These APIs also have variants where you can designate the cutoff point as being
+    "hot" or "cold." Please refer to the API documentation for more information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a long time, the compiler was only able to analyze and optimize the source
+    code with a static view. For dynamic factors inside a program – for instance,
+    the branch taken count – compilers could only make an approximation. PGO opened
+    an alternative path to provide extra information for compilers to peek into the
+    target program's runtime behavior, for the sake of making less ambiguous and more
+    aggressive decisions. In this section, we learned how to collect and use runtime
+    profiling information – the key to PGO – with LLVM. We learned how to use the
+    related infrastructure in LLVM to collect and generate such profiling data. We
+    also learned about the programming interface we can use to access that data –
+    as well as some high-level analyses built on top of it – to assist our development
+    inside an LLVM Pass. With these abilities, LLVM developers can plug in this runtime
+    information to further improve the quality and precision of their existing optimization
+    Passes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we *augmented* the workspace of the compiler by processing
+    the static source code and capturing the program's runtime behaviors. In the first
+    part of this chapter, we learned how to use the infrastructure provided by LLVM
+    to create a sanitizer – a technique that inserts instrumentation code into the
+    target program for the sake of checking certain runtime properties. By using a
+    sanitizer, software engineers can improve their development quality with ease
+    and with high precision. In the second part of this chapter, we extended the usages
+    of such runtime data to the domain of compiler optimization; PGO is a technique
+    that uses dynamic information, such as the execution frequency of basic blocks
+    or functions, to make more aggressive decisions for optimizing the code. Finally,
+    we learned how to access such data with an LLVM Pass, which enables us to add
+    PGO enhancement to existing optimizations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Congratulations, you've just finished the last chapter! Thank you so much for
+    reading this book. Compiler development has never been an easy subject – if not
+    an obscure one – in computer science. In the past decade, LLVM has significantly
+    lowered the difficulties of this subject by providing robust yet flexible modules
+    that fundamentally change how people think about compilers. A compiler is not
+    just a single executable such as `gcc` or `clang` anymore – it is a collection
+    of building blocks that provide developers with *countless* ways to create tools
+    to deal with hard problems in the programming language field.
+  prefs: []
+  type: TYPE_NORMAL
+- en: However, with so many choices, I often became lost and confused when I was still
+    a newbie to LLVM. There was documentation for every single API in this project,
+    but I had no idea how to put them together. I wished there was a book that pointed
+    in the general direction of each important component in LLVM, telling me *what*
+    it is and *how* I can take advantage of it. And here it is, the book I wished
+    I could have had at the beginning of my LLVM career – the book you just finished
+    – come to life. I hope you won't stop your expedition of LLVM after finishing
+    this book. To improve your skills even further and reinforce what you've learned
+    from this book, I recommend you to check out the official document pages ([https://llvm.org/docs](https://llvm.org/docs))
+    for content that complements this book. More importantly, I encourage you to participate
+    in the LLVM community via either their mailing list ([https://lists.llvm.org/cgi-bin/mailman/listinfo/llvm-dev](https://lists.llvm.org/cgi-bin/mailman/listinfo/llvm-dev))
+    or Discourse forum (https://llvm.discourse.group/), especially the first one –
+    although a mailing list might sound old-school, there are many talented people
+    there willing to answer your questions and provide useful learning resources.
+    Last but not least, annual LLVM dev meetings ([https://llvm.org/devmtg/](https://llvm.org/devmtg/)),
+    in both the United States and Europe, are some of the best events where you can
+    learn new LLVM skills and chat face-to-face with people who literally built LLVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: I hope this book enlightened you on your path to mastering LLVM and helped you
+    find joy in crafting compilers.
+  prefs: []
+  type: TYPE_NORMAL

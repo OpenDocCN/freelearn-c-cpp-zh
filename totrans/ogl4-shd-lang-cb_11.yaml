@@ -1,0 +1,1239 @@
+- en: Using Compute Shaders
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following recipes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a particle simulation with the compute shader
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating a fractal texture using the compute shader
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the compute shader for cloth simulation
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing an edge detection filter with the compute shader
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Introduction
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '**Compute shaders** were introduced into OpenGL with version 4.3\. A compute
+    shader is a shader stage that can be used for arbitrary computation. It provides
+    the ability to leverage the GPU and its inherent parallelism for general computing
+    tasks that might have previously been implemented in serial on the CPU. The compute
+    shader is most useful for tasks that are not directly related to rendering, such
+    as physical simulation.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although APIs such as OpenCL and CUDA are already available for general purpose
+    computation on the GPU, they are completely separate from OpenGL. Compute shaders
+    are integrated directly within OpenGL, and therefore are more suitable for general
+    computing tasks that are more closely related to graphics rendering.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The compute shader is not a traditional shader stage in the same sense as the
+    fragment or vertex shader. It is not executed in response to rendering commands.
+    In fact, when a compute shader is linked with a vertex, fragment, or other shader
+    stages, it is effectively inert when drawing commands are executed. The only way
+    to execute the compute shader is via the OpenGL `glDispatchCompute` or `glDispatchComputeIndirect` command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compute shaders do not have any direct user-defined inputs and no outputs at
+    all. Shaders get its work by fetching data directly from memory using image-access
+    functions such as the image load/store operations, or via shader storage buffer
+    objects. Similarly, it provides its results by writing to the same or other objects.
+    The only non-user-defined inputs to a compute shader are a set of variables that
+    determine where the shader invocation is within its *space* of execution.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The number of invocations of the compute shader is completely user defined.
+    It is not tied in any way to the number of vertices or fragments being rendered.
+    We specify the number of invocations by defining the number of work groups, and
+    the number of invocations within each work group.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compute space and work groups
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The number of invocations of a compute shader is governed by the user-defined
+    compute space. This space is divided into a number of work groups. Each work group
+    is then broken down into a number of invocations. We think of this in terms of
+    the global compute space (all shader invocations) and the local work group space
+    (the invocations within a particular work group). The compute space can be defined
+    as a one-, two-, or three-dimensional space.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technically, it is always defined as a three-dimensional space, but any of the
+    three dimensions can be defined with a size of one (1), which effectively removes
+    that dimension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, a one-dimensional compute space with five work groups and three
+    invocations per work group could be represented as the following diagram. The
+    thicker lines represent the work groups, and the thinner lines represent the invocations
+    within each work group:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/76d4aaa8-3781-48d8-adc3-e2440c174a9a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: In this case, we have *5 * 3 = 15* shader invocations. The grey shaded invocation
+    is in work group **2**, and within that work group is invocation **1** (the invocations
+    are indexed starting at **0**). We can also refer to that invocation with a global
+    index of 7 by indexing the total number of invocations starting at zero. The global
+    index determines an invocation's location within the global compute space, rather
+    than just within the work group.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is determined by taking the product of work group (**2**) and index the number
+    of invocations per work group (**3**), plus the local invocation index (**1**)
+    that is *2 * 3 + 1 = 7*. The **global index** is simply the index of each invocation
+    in the global compute space, starting at zero on the left and counting from there.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following diagram shows a representation of a two-dimensional compute space
+    where the space is divided into 20 work groups, four in the *x* direction and
+    five in the *y* direction. Each work group is then divided into nine invocations,
+    three in the *x* direction and three in the *y* direction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/9eb7b3f7-073b-42b8-beb7-1c1c5b0612af.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: The cell that is shaded in gray represents invocation (0, 1) within the work
+    group (2, 0). The total number of compute shader invocations in this example is
+    then *20 * 9 = 180*. The global index of this shaded invocation is (6, 1). As
+    with the one-dimensional case, we can think of this index as a global compute
+    space (without the work groups), and it can be computed (for each dimension) by
+    the number of invocations per work group times the work group index, plus the
+    local invocation index. For the *x* dimension, this would be *3 * 2 + 0 = 6*,
+    and for the *y* dimension it is *3 * 0 + 1 = 1*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The same idea can extend in a straightforward manner to a three-dimensional
+    compute space. In general, we choose the dimensionality based on the data to be
+    processed. For example, if I'm working on the physics of a particle simulation,
+    I would just have a list of particles to process, so a one-dimensional compute
+    space might make sense. On the other hand, if I'm processing a cloth simulation,
+    the data will have a grid structure, so a two-dimensional compute space would
+    be appropriate.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There are limits to the total number of work groups and local shader invocations.
+    These can be queried (via `glGetInteger*`) using the `GL_MAX_COMPUTE_WORK_GROUP_COUNT`, `GL_MAX_COMPUTE_WORK_GROUP_SIZE`,
+    and `GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS `parameters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The order of execution of the work groups and thereby the individual shader
+    invocations is unspecified and the system can execute them in any order. Therefore,
+    we shouldn't rely on any particular ordering of the work groups. Local invocations
+    within a particular work group will be executed in parallel (if possible). Therefore,
+    any communication between invocations should be done with great care. Invocations
+    within a work group can communicate via shared local data, but invocations should
+    not (in general) communicate with invocations in other work groups without the
+    consideration of the various pitfalls involved such as deadlock and data races.
+    In fact, those can also be issues for local shared data within a work group as
+    well, and care must be taken to avoid these problems. In general, for reasons
+    of efficiency, it is best to only attempt communication within a work group. As
+    with any kind of parallel programming, "there be dragons here."
+  prefs: []
+  type: TYPE_NORMAL
+- en: OpenGL provides a number of atomic operations and memory barriers that can help
+    with the communication between invocations. We'll see some examples in the recipes
+    that follow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Executing the compute shader
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When we execute the compute shader, we define the compute space. The number
+    of work groups are determined by the parameters to `glDispatchCompute`. For example,
+    to execute the compute shader with a two-dimensional compute space with `4` work
+    groups in the *x* dimension and `5` work groups in the *y* dimension (matching
+    the preceding diagram), we''d use the following call:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The number of local invocations within each work group is not specified on
+    the OpenGL side. Instead, it is specified within the compute shader itself with
+    a layout specifier. For example, here, we specify nine local invocations per work
+    group, `3` in the *x* direction and `3` in the *y* direction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The size in the *z* dimension can be left out (the default is one).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When a particular invocation of the compute shader is executing, it usually
+    needs to determine where it is within the global compute space. GLSL provides
+    a number of built-in input variables that help with this. Most of them are listed
+    in the following table:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Variable** | **Type** | **Meaning** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `gl_WorkGroupSize` | `uvec3` | The number of invocations per work group in
+    each dimension—the same as what is defined in the layout specifier. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `gl_NumWorkGroups` | `uvec3` | The total number of work groups in each dimension.
+    |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `gl_WorkGroupID` | `uvec3` | The index of the current work group for this
+    shader invocation. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `gl_LocalInvocationID` | `uvec3` | The index of the current invocation within
+    the current work group. |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `gl_GlobalInvocationID` | `uvec3` | The index of the current invocation within
+    the global compute space. |'
+  prefs: []
+  type: TYPE_TB
+- en: 'The last one in the preceding table, `gl_GlobalInvocationID`, is computed in
+    the following way (each operation is component-wise):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: This helps us to locate the current invocation within the global compute space
+    (refer to the preceding examples).
+  prefs: []
+  type: TYPE_NORMAL
+- en: GLSL also defines `gl_LocalInvocationIndex`, which is a flattened form of `gl_LocalInvocationID`.
+    It can help when multidimensional data is provided in a linear buffer, but is
+    not used in any of the examples that follow.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a particle simulation with the compute shader
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this recipe, we'll implement a simple particle simulation. We'll have the
+    compute shader handle the physics computations and update the particle positions
+    directly. Then, we'll just render the particles as points. Without the compute
+    shader, we'd need to update the positions on the CPU by stepping through the array
+    of particles and updating each position in a serial fashion, or by making use
+    of transform feedback, as shown in the *Creating a particle system using transform
+    feedback* recipe in [Chapter 9](5e6b75a0-9f0c-4798-bc37-b5d34b53ef4a.xhtml), *Using
+    Noise in Shaders*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Doing such animations with vertex shaders is sometimes counterintuitive and
+    requires some additional work (such as transform feedback setup). With the compute
+    shader, we can do the particle physics in parallel on the GPU, and customize our
+    compute space to get the most "bang for the buck" out of our GPU.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following image shows our particle simulation running with one million
+    particles. Each particle is rendered as a 1 x 1 point. The particles are partially
+    transparent, and the particle attractors are rendered as small 5 x 5 squares (barely
+    visible):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/9f182425-bc66-4943-a13d-2dfff2ed8b51.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: These simulations can create beautiful, abstract figures, and are a lot of fun
+    to produce.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For our simulation, we''ll define a set of attractors (two in this case, but
+    you can create more), which I''ll call the **black holes**. They will be the only
+    objects that affect our particles and they''ll apply a force on each particle
+    that is inversely proportional to the distance between the particle and the black
+    hole. More formally, the force on each particle will be determined by the following
+    equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/267ba104-508c-4177-ad32-043acae98a17.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '*N* is the number of black holes (attractors), *r[i]* is the vector between
+    the *i*^(th) attractor and the particle (determined by the position of the attractor
+    minus the particle position), and *G[i]* is the strength of the *i*^(th) attractor.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To implement the simulation, we compute the force on each particle and then
+    update the position by integrating the Newtonian equations of motion. There are
+    a number of well-studied numerical techniques for integrating the equations of
+    motion. For this simulation, the simple Euler method is sufficient. With the Euler
+    method, the position of the particle at time *t + Δt* is given by the following
+    equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/1b1a4e59-6e5f-44cd-a3c3-ec3d262ceb1e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '*P* is the position of the particle, *v* is the velocity, and *a* is the acceleration.
+    Similarly, the updated velocity is determined by the following equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/9cde8466-8277-4e9e-a6e7-8abf54393bbf.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: These equations are derived from a Taylor expansion of the position function
+    about time *t*. The result is dependent upon the size of the time step (*Δt*),
+    and is more accurate when the time step is very small.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The acceleration is directly proportional to the force on the particle, so by
+    calculating the force on the particle (using the preceding equation), we essentially
+    have a value for the acceleration. To simulate the particle's motion, we track
+    its position and velocity, determine the force on the particle due to the black
+    holes, and then update the position and velocity using the equations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll use the compute shader to implement the physics here. Since we're just
+    working with a list of particles, we'll use a one-dimensional compute space, and
+    work groups of about 1,000 particles each. Each invocation of the compute shader
+    will be responsible for updating the position of a single particle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll use shader storage buffer objects to track the positions and velocities,
+    and when rendering the particles themselves, we can just render directly from
+    the position buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'On the OpenGL side, we need a buffer for the position of the particles and
+    a buffer for the velocity. Create a buffer containing the initial positions of
+    the particles and a buffer with zeroes for the initial velocities. We''ll use
+    four component positions and velocities for this example in order to avoid issues
+    with data layouts. For example, to create the buffer for the positions, we might
+    do something as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Use a similar process for the velocity data, but bind it to index one of the
+    `GL_SHADER_STORAGE_BUFFER` binding location:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Set up a vertex array object that uses the same position buffer as its data
+    source for the vertex position.
+  prefs: []
+  type: TYPE_NORMAL
+- en: To render the points, set up a vertex and fragment shader pair that just produces
+    a solid color. Enable blending and set up a standard blending function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We''ll use the compute shader for updating the positions of the particles:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the render routine, invoke the compute shader to update the particle positions:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, make sure that all data has been written out to the buffer by invoking
+    a memory barrier:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, render the particles using data in the position buffer.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The compute shader starts by defining the number of invocations per work group
+    using the layout specifier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: This specifies `1000` invocations per work group in the *x* dimension. You can
+    choose a value for this that makes the most sense for the hardware you're running.
+    Just make sure to adjust the number of work groups appropriately. The default
+    size for each dimension is one so we don't need to specify the size of the *y*
+    and *z* directions.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Then, we have a set of uniform variables that define the simulation parameters.
+    `Gravity1` and `Gravity2` are the strengths of the two black holes (`G`, in the
+    preceding equation), and `BlackHolePos1` and `BlackHolePos2` are their positions.
+    `ParticleInvMass` is the inverse of the mass of each particle, which is used to
+    convert force to acceleration. Finally, `DeltaT` is the time-step size, which
+    is used in the Euler method for the integration of the equations of motion.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The buffers for position and velocity are declared next. Note that the binding
+    values here match those that we used on the OpenGL side when initializing the
+    buffers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Within the main function, we start by determining the index of the particle
+    for which this invocation is responsible for. Since we're working with a linear
+    list of particles, and the number
+  prefs: []
+  type: TYPE_NORMAL
+- en: of particles is the same as the number of shader invocations, what we want is
+    the index within the global range of invocations. This index is available via
+    the built-in
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`gl_GlobalInvocationID.x` input variable. We use the global index here because
+    it is the index within the entire buffer that we need, not the index within our
+    work group, which would only reference a portion of the entire array.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we retrieve the position and velocity from their buffers, and compute
+    the force due to each black hole, storing the sum in the `force` variable. Then,
+    we convert the force to acceleration and update the particle's position and velocity
+    using the Euler method. We write to the same location from which we read previously.
+    Since invocations do not share data, this is safe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the render routine, we invoke the compute shader (step *2* in the *How to
+    do it... *section), defining the number of work groups per dimension. In the compute
+    shader, we specified a work group size of `1000`. Since we want one invocation
+    per particle, we divide the total number of particles by `1000` to determine the
+    number of work groups.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, in step *3*, before rendering the particles, we need to invoke a memory
+    barrier to ensure that all compute shader writes have fully executed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `chapter11/sceneparticles.cpp` file in the example code.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Refer to [Chapter 9](5e6b75a0-9f0c-4798-bc37-b5d34b53ef4a.xhtml), *Using Noise
+    in Shaders*, for other particle simulations. Most of these have been implemented
+    using transform feedback, but could instead be implemented using the compute shader.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Creating a fractal texture using the compute shader
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The Mandelbrot set is based on iterations of the following complex polynomial:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/4a042f57-0298-4f05-af19-f4767eca21ac.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '*z* and *c* are complex numbers. Starting with the value *z = 0 + 0i*, we apply
+    the iteration repeatedly until a maximum number of iterations is reached or the
+    value of *z* exceeds a specified maximum. For a given value of *c*, if the iteration
+    remains stable (*z* doesn''t increase above the maximum) the point is inside the
+    Mandelbrot set and we color the position corresponding to *c* black. Otherwise,
+    we color the point based on the number of iterations it took for the value to
+    exceed the maximum.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the following image, the image of the Mandelbrot set is applied as a texture
+    to a cube:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/4b5984d3-0446-42fb-9653-fc62fdba21de.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: We'll use the compute shader to evaluate the Mandelbrot set. Since this is another
+    image-based technique, we'll use a two-dimensional compute space with one compute
+    shader invocation per pixel. Each invocation can work independently, and doesn't
+    need to share any data with other invocations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Create a texture to store the results of our fractal calculation. The image
+    should be bound to the image texture unit `0` using `glBindImageTexture`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the compute shader, we start by defining the number of shader invocations
+    per work group:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we declare the output image as well as some other uniform variables:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We define a function to compute the number of iterations for a given position
+    on the complex plane:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the main function, we start by computing the size of a pixel in the complex
+    space:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we determine the value of `c` for this invocation:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we call the `mandelbrot` function and determine the color based on the
+    number of iterations:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then write the color to the output image:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Within the render function of the OpenGL program, we execute the compute shader
+    with one invocation per texel, and call `glMemoryBarrier`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: Then, we render the scene, applying the texture to the appropriate objects.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In step 2, the `ColorImg` uniform variable is the output image. It is defined
+    to be located at the image texture unit `0` (via the `binding` layout option).
+    Also note that the format is `rgb8`, which must be the same as what is used in
+    the `glTexStorage2D` call when creating the texture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`MAX_ITERATIONS` is the maximum number of iterations of the complex polynomial
+    mentioned earlier. `CompWindow` is the region of complex space with which we are
+    working on. The first two components `CompWindow.xy` are the real and imaginary
+    parts of the lower-left corner of the window, and `CompWindow.zw` is the upper
+    right corner. `Width` and `Height` define the size of the texture image.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `mandelbrot` function (step 3) takes a value for `c` as the parameter, and
+    repeatedly iterates the complex function until either a maximum number of iterations
+    is reached, or the absolute value of `z` becomes greater than `2`. Note that here,
+    we avoid computing the square root and just compare the absolute value squared
+    with `4`. The function returns the total number of iterations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Within the main function (step 4), we start by computing the size of a pixel
+    within the complex window (`dx`, `dy`). This is just the size of the window divided
+    by the number of texels in each dimension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The compute shader invocation is responsible for the texel located at `gl_GlobalInvocationID.xy`.
+    We compute the point on the complex plane that corresponds to this texel next.
+    For the *x* position (real axis), we take the size of the texel in that direction
+    (`dx`) times `gl_GlobalInvocationID.x` (which gives us the distance from the left
+    edge of the window), plus the position of the left edge of the window (`CompWindow.x`).
+    A similar calculation is done for the y position (imaginary axis).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In step 6, we call the `mandelbrot` function with the value for `c` that was
+    just determined, and determine a color based on the number of iterations returned.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In step 7, we apply the color to the output image at `gl_GlobalInvocationID.xy` using `imageStore`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the OpenGL render function (step 8), we dispatch the compute shader with
+    enough invocations so that there is one invocation per texel. The `glMemoryBarrier` call
+    assures that all writes to the output image are complete before continuing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Prior to the advent of the compute shader, we might have chosen to do this using
+    the fragment shader. However, the compute shader gives us a bit more flexibility
+    in defining how the work is allocated on the GPU. We can also gain memory efficiency
+    by avoiding the overhead of a complete FBO for the purposes of a single texture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `chapter11/scenemandelbrot.cpp` file in the example code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using the compute shader for cloth simulation
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The compute shader is well-suited for harnessing the GPU for physical simulation.
+    Cloth simulation is a prime example. In this recipe, we''ll implement a simple
+    particle-spring-based cloth simulation using the compute shader. The following
+    is an image of the simulation of a cloth hanging by five pins (you''ll have to
+    imagine it animating):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/49737ff4-333c-43cc-a4d7-0fcd197f0d1d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'A common way to represent cloth is with a particle-spring lattice. The cloth
+    is composed of a 2D grid of point masses, each connected to its eight neighboring
+    masses with idealized springs. The following diagram represents one of the point
+    masses (center) connected to its neighboring masses. The lines represent the springs.
+    The dark lines are the horizontal/vertical springs and the dashed lines are the
+    diagonal springs:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/f16c5ecd-b843-4421-9401-0ec1bb8d1fe4.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The total force on a particle is the sum of the forces produced by the eight
+    springs to which it is connected. The force for a single spring is given by the
+    following equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/91f33d6d-afec-42fc-9255-69d96af6732c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '*K* is the stiffness of the spring, *R* is the rest-length of the spring (the
+    length where the spring applies zero force), and *r* is the vector between the
+    neighboring particle and the particle (the neighbor''s position minus the particle''s
+    position).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similar to the previous recipe, the process is simply to compute the total force
+    on each particle and then integrate Newton's equations of motion using our favorite
+    integration. Again, we'll use the Euler method for this example. For details on
+    the Euler method, refer to the previous *Implementing a particle simulation with
+    the compute shader *recipe.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This particle-spring lattice is obviously a two-dimensional structure, so it
+    makes sense to map it to a two-dimensional compute space. We'll define rectangular
+    work groups and use one shader invocation per particle. Each invocation needs
+    to read the positions of its eight neighbors, compute the force on the particle,
+    and update the particle's position and velocity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that, in this case, each invocation needs to read the positions of the
+    neighboring particles. Those neighboring particles will be updated by other shader
+    invocations. Since we can't rely on any execution order for the shader invocations,
+    we can't read and write directly to the same buffer. If we were to do so, we wouldn't
+    know for sure whether we were reading the original positions of the neighbors
+    or their updated positions. To avoid this problem, we'll use pairs of buffers.
+    For each simulation step, one buffer will be designated for reading and the other
+    for writing, then we'll swap them for the next step, and repeat.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It might be possible to read/write to the same buffer with careful use of local
+    shared memory; however, there is still the issue of the particles along the edges
+    of the work group. Their neighbor's positions are managed by another work group,
+    and again, we have the same problem.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This simulation tends to be quite sensitive to numerical noise, so we need
+    to use a very small integration time step. A value of around `0.000005` works
+    well. Additionally, the simulation looks better when we apply a damping force
+    to simulate air resistance. A good way to simulate air resistance is to add a
+    force that is proportional to and in the opposite direction to the velocity, as
+    in the following equation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/b4b10f92-db5d-47fb-8084-9d301c77303f.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '*D* is the strength of the damping force and *v* is the velocity of the particle.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Start by setting up two buffers for the particle position and two for the particle
+    velocity. We'll bind them to the `GL_SHADER_STORAGE_BUFFER` indexed binding point
+    at indices `0` and `1` for the position buffers and `2` and `3` for the velocity
+    buffers. The data layout in these buffers is important. We'll lay out the particle
+    positions/velocities in row-major order starting at the lower left and proceeding
+    to the upper right of the lattice.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll also set up a vertex array object for drawing the cloth using the particle
+    positions as triangle vertices. We may also need buffers for normal vectors and
+    texture coordinates. For brevity, I'll omit them from this discussion, but the
+    example code for this book includes them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the compute shader, we start by defining the number of invocations per work
+    group:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we define a set of uniform variables for the simulation parameters:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, declare the shader storage buffer pairs for the position and velocity:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the main function, we get the position of the particle for which this invocation
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'is responsible for:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Initialize our force with the force due to gravity:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Add the force due to the particle before this one:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Repeat the preceding steps for the following particles and to the left and
+    right. Then, add the force due to the particle that is diagonally above and to
+    the left:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Repeat the preceding steps for the other three diagonally connected particles.
+    Then, add the damping force:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we integrate the equations of motion using the Euler method:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we pin some of the top verts so that they do not move:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Within the OpenGL render function, we invoke the compute shader so that each
+    work group is responsible for 100 particles. Since the time step size is so small,
+    we need to execute the process many times (`1000`), each time swapping the input
+    and output buffers:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, we render the cloth using the position data from the position buffer.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We use `100` invocations per work group, `10` in each dimension. The first
+    statement in the compute shader defines the number of invocations per work group:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: The uniform variables that follow define the constants in the force equations
+    and the rest the lengths for each of the horizontal, vertical, and diagonal springs.
+    The time step size is `DeltaT`. The position and velocity buffers are declared
+    next. We define the position buffers at binding indexes `0` and `1`, and the velocity
+    buffers at indexes `2` and `3`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the main function (step 4), we start by determining the number of particles
+    in each dimension. This is going to be the same as the number of work groups times
+    the work group size. Next, we determine the index of the particle for which this
+    invocation is responsible for. Since the particles are organized in the buffers
+    in row-major order, we compute the index by the global invocation ID in the *y*
+    direction times the number of particles in the *x* dimension, plus the global
+    invocation ID in the *x* direction.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In step 5, we initialize our force with the gravitational force, `Gravity` times
+    the mass of a particle (`ParticleMass`). Note that it's not really necessary here
+    to multiply by the mass since all particles have the same mass. We could just
+    pre-multiply the mass into the gravitational constant.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In steps 6 and 7, we add the force on this particle due to each of the eight
+    neighboring particles connected by virtual springs. For each spring, we add the
+    force due to that spring. However, we first need to check to see if we are on
+    the edge of the lattice. If we are, there may not be a neighboring particle (see
+    the following diagram).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, in the preceding code, when computing the force due to the preceding
+    spring/particle, we verify that `gl_GlobalInvocationID.y` is less than the number
+    of particles in the *y* dimension minus one. If that is true, there must be a
+    particle above this one. Otherwise, the current particle is on the top edge of
+    the lattice and there is no neighboring particle above it. (Essentially, `gl_GlobalInvocationID`
+    contains the particle''s location in the overall lattice.) We can do a similar
+    test for the other three horizontal/vertical directions. When computing the force
+    for the diagonally connected particles, we need to check that we''re not on a
+    horizontal and a vertical edge. For example, in the preceding code, we''re looking
+    for the particle that is above and to the left, so we check that `gl_GlobalInvocationID.x`
+    is greater than zero (not on the left edge), and that `gl_GlobalInvocationID.y`
+    is less than the number of particles in the y direction minus one (not on the
+    top edge):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/bb92f5f0-56e7-447f-a321-ca314767ae5d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Once we verify that the neighboring particle exists, we compute the force due
+    to the spring connected to that particle and add it to the total force. We organized
+    our particles in row-major order in the buffer. Therefore, to access the position
+    of the neighboring particle, we take the index of the current particle and add/subtract
+    the number of particles in the *x* direction to move vertically, and/or add/subtract
+    one to move horizontally.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In step 8, we apply the damping force that simulates air resistance by adding
+    to the total force `DampingConst` times the velocity. The minus sign here assures
+    that the force is in the opposite direction of the velocity.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In step 9, we apply the Euler method to update the position and velocity based
+    on the force. We multiply the force by the inverse of the particle mass to get
+    the acceleration, then store the results of the Euler integration into the corresponding
+    positions in the output buffers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, in step 10, we reset the position of the particle if it is located
+    at one of the five pin positions at the top of the cloth.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Within the OpenGL render function (step 11), we invoke the compute shader multiple
+    times, switching the input/output buffers after each invocation. After calling
+    `glDispatchCompute`, we issue a `glMemoryBarrier` call to make sure that all shader
+    writes have completed before swapping the buffers. Once that is complete, we go
+    ahead and render the cloth using the positions from the shader storage buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: For rendering, it is useful to have normal vectors. One option is to create
+    another compute shader to recalculate the normal vectors after the positions are
+    updated. For example, we might execute the preceding compute shader 1,000 times,
+    dispatch the other compute shader once to update the normals, and then render
+    the cloth.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Additionally, we may be able to achieve better performance with the use of local
+    shared data within the work group. In the preceding implementation, the position
+    of each particle is read a maximum of eight times. Each read can be costly in
+    terms of execution time. It is faster to read from memory that is closer to the
+    GPU. One way to achieve this is to read data into local shared memory once, and
+    then read from the shared memory for subsequent reads. In the next recipe, we'll
+    see an example of how this is done. It would be straightforward to update this
+    recipe in a similar way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `chapter11/scenecloth.cpp` file in the example code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The *Implementing an edge detection filter with the compute shader* recipe
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing an edge detection filter with the compute shader
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the *Applying an edge detection filter* recipe in [Chapter 6](827d2689-d7e7-4188-a7bc-2eb4d813e88d.xhtml),
+    *Image Processing and Screen Space Techniques*, we saw an example of how to implement
+    edge detection using the fragment shader. The fragment shader is well-suited for
+    many image-processing operations, because we can trigger the execution of the
+    fragment shader for each pixel by rendering a screen-filling quad. Since image
+    processing filters are often applied to the result of a render, we can render
+    to a texture, then invoke the fragment shader for each screen pixel (by rendering
+    a quad), and each fragment shader invocation is then responsible for processing
+    a single pixel. Each invocation might need to read from several locations in the
+    (rendered) image texture, and a texel might be read multiple times from different
+    invocations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This works well for many situations, but the fragment shader was not designed
+    for image processing. With the compute shader, we can have more fine-grained control
+    over the distribution of shader invocations, and we can make use of local shared
+    memory to gain a bit more efficiency with data reads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, we'll re-implement the edge detection filter using the compute
+    shader. We'll make use of local (work group) shared memory to gain additional
+    speed. Since this local memory is closer to the GPU, memory access is faster than
+    it would be when reading directly from the shader storage buffers (or textures).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As with the previous recipe, we''ll implement this using the Sobel operator,
+    which is made up of two 3 x 3 filter kernels which is, shown as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/14262d3a-5189-4b11-a0ce-31960810877c.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: For details on the Sobel operator, refer to [Chapter 6](827d2689-d7e7-4188-a7bc-2eb4d813e88d.xhtml),
+    *Image Processing and Screen Space Techniques*. The key point here is that in
+    order to compute the result for a given pixel, we need to read the values of the
+    eight neighboring pixels. This means that the value of each pixel needs to be
+    fetched up to eight times (when processing the neighbors of that pixel). To gain
+    some additional speed, we'll copy the needed data into local shared memory so
+    that, within a work group, we can read from the shared memory rather than fetching
+    it from the shader storage buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Work group shared memory is generally faster to access than texture or shader
+    storage memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this example, we'll use one compute shader invocation per pixel, and a 2D
+    work group size of 25 x 25\. Before computing the Sobel operator, we'll copy the
+    corresponding pixel values into local shared memory for the work group. For each
+    pixel, in order to compute the filter, we need to read the values of the eight
+    neighboring pixels. In order to do so for the pixels on the edge of the work group,
+    we need to include in our local memory an extra strip of pixels outside the edges
+    of the work group. Therefore, for a work group size of 25 x 25, we'll need a storage
+    size of 27 x 27.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Getting ready
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Start by setting up for rendering to a **framebuffer object** (**FBO**) with
+    a color texture attached; we'll render the raw pre-filtered image to this texture.
+    Create a second texture to receive the output from the edge-detection filter.
+    Bind this latter texture to unit `0`. We'll use this as the output from the compute
+    shader. Bind the FBO texture to image texture unit `0`, and the second texture
+    to image texture unit `1` using `glBindImageTexture`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, set up a vertex/fragment shader pair for rendering directly to the FBO,
+    and for rendering a full-screen texture.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How to do it...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Perform the following steps:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the compute shader, as usual, we start by defining the number of shader
+    invocations per work group:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we declare uniform variables for our input and output images and for
+    the edge detection threshold. The input image is the rendered image from the FBO,
+    and the output image will be the result of the edge detection filter:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Then, we declare our work group''s shared memory, which is an array of size
+    27 x 27:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: We also define a function for computing the luminance of a pixel called `luminance`.
+    Since the same function was used in several previous recipes, this need not be
+    repeated here.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Next, we define a function that applies the Sobel filter to the pixel that
+    corresponds to this shader invocation. It reads directly from the local shared
+    data:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the main function, we start by copying the luminance for this pixel into
+    the shared memory array:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: If we're on the edge of the work group, we need to copy one or more additional
+    pixels into the shared memory array in order to fill out the pixels around the
+    edge. So, we need to determine whether or not we're on the edge of the work group
+    (by examining `gl_LocalInvocationID`), and then determine which pixels we're responsible
+    for copying. This is not complex, but is fairly involved and lengthy, due to the
+    fact that we also must determine whether or not that external pixel actually exists.
+    For example, if this work group is on the edge of the global image, then some
+    of the edge pixels don't exist (are outside of the image). Due to its length,
+    I won't include that code here. For full details, grab the code for this book
+    from the GitHub site.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Once we''ve copied the data for which this shader invocation is responsible,
+    we need to wait for other invocations to do the same, so here we invoke a barrier.
+    Then, we call our `applyFilter` function to compute the filter and write the results
+    to the output image:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the OpenGL render function, we start by rendering the scene to the FBO,
+    then dispatch the compute shader, and wait for it to finish all of its writes
+    to the output image:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: Finally, we render the output image to the screen via a full-screen quad.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How it works...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In step 1, we specify 625 shader invocations per work group, 25 in each dimension.
+    Depending on the system on which the code is running, this could be changed to
+    better match the hardware available.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The uniform `image2D` variables (step 2) are the input and output images. Note
+    the binding locations indicated in the layout qualifier. These correspond to the
+    image units specified in the `glBindImageTexture` call within the main OpenGL
+    program. The input image should contain the rendered scene, and corresponds to
+    the image texture bound to the FBO. The output image will receive the result of
+    the filter. Also note the use of `rgb8` as the format. This must be the same as
+    the format used when creating the image using `glTexStorage2D`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `localData` array is declared in step 3 with the shared qualifier. This
+    is our work group's local shared memory. The size is 27 x 27 in order to include
+    an extra strip, one pixel wide along the edges. We store the luminance of all
+    of the pixels in the work group here, plus the luminance for a strip of surrounding
+    pixels of width one.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `applyFilter` function (step 5) is where the Sobel operator is computed
+    using the data in `localData`. It is fairly straightforward, except for an offset
+    that needs to be applied due to the extra strip around the edges. The luminance
+    of the pixel that this invocation is responsible for is located at:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: Without the extra strip of pixels, we could just use `gl_LocalInvocationID`,
+    but here we need to add an offset of one in each dimension.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next few statements just compute the Sobel operator, and determine the magnitude
+    of the gradient, stored in `g`. This is done by reading the luminance of the eight
+    nearby pixels, reading from the `localData` shared array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: At the end of the `applyFilter` function, we write to `OutputImg` as the result
+    of the filter. This is either (1,1,1,1) or (0,0,0,1), depending on whether `g`
+    is above the threshold or not. Note that here, we use `gl_GlobalInvocationID`
+    as the location in the output image. The global ID is appropriate for determining
+    the location within the global image, while the local ID tells us where we are
+    within the local work group, and is more appropriate for access to the local shared
+    array.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the main function (step 6), we compute the luminance of the pixel corresponding
+    to this invocation (at `gl_GlobalInvocationID`) and store it in the local shared
+    memory (`localData`) at `gl_LocalInvocationID + 1`. Again, the `+ 1` is due to
+    the additional space for the edge pixels.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next step (step 7) is to copy the edge pixels. We only do so if this invocation
+    is on the edge of the work group. Additionally, we need to determine if the edge
+    pixels actually exist or not. For details on this, refer to the code that accompanies
+    this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In step 8, we call the GLSL barrier function. This synchronizes all shader invocations
+    within the work group to this point in the code, assuring that all writes to the
+    local shared data have completed. Without calling the barrier function, there's
+    no guarantee that all shader invocations will have finished writing to `localData`,
+    and therefore the data might be incomplete. It is interesting (and instructive)
+    to remove this call and observe the results.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we call `applyFilter` to compute the Sobel operator and write to the
+    output image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Within the OpenGL render function, we dispatch the compute shader so that there
+    are enough work groups to cover the image. Since the work group size is 25 x 25,
+    we invoke *width/25* work groups in the *x* dimension and *height/25* in the *y*.
+    The result is one shader invocation per pixel in the input/output image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: There's more...
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This is a straightforward example of the use of local shared memory. It is only
+    slightly complicated by the fact that we need to deal with the extra row/column
+    of pixels. In general, however, local shared data can be used for any type of
+    communication between invocations within a work group. In this case, the data
+    is not used for communication, but is instead used to increase efficiency by decreasing
+    the global number of reads from the image.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that there are (sometimes stringent) limits on the size of shared memory.
+    We can use `GL_MAX_COMPUTE_SHARED_MEMORY_SIZE` (via `glGetInteger*`) to query
+    the maximum size available on the current hardware. The minimum required by the
+    OpenGL specification is 32 KB.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See also
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The `chapter11/sceneedge.cpp` file in the example code
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The *Applying an edge detection filter* recipe in [Chapter 6](827d2689-d7e7-4188-a7bc-2eb4d813e88d.xhtml),
+    *Image Processing and Screen Space Techniques*
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

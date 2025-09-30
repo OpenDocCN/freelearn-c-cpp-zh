@@ -1,0 +1,842 @@
+- en: '*Chapter 6*: Extending the Preprocessor'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In the previous chapter, we went through the structure of Clang—the official
+    frontend of **Low-Level Virtual Machine (LLVM)** for C-family languages—and some
+    of its most important components. We also introduced a variety of Clang''s tooling
+    and extension options. In this chapter, we''re diving into the first phase in
+    Clang''s frontend pipeline: the preprocessor.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For C-family programming languages, `#`) character—`#include` and `#define`,
+    to name but a few—with some other textual contents (or non-textual *tokens*, in
+    some rare cases). For example, the preprocessor will basically *copy and paste*
+    contents of header files designated by the `#include` directive into the current
+    compilation unit before parsing it. This technique has the advantage of extracting
+    common code and reusing it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will briefly explain how Clang''s `#pragma` syntax—such
+    as that used by OpenMP (`#pragma omp loop`, for example) —in an easier way. Learning
+    these techniques yields you more options when solving problems of different abstraction
+    levels. Here is the list of sections in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with `SourceLocation` and `SourceManager`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Learning preprocessor and lexer essentials
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Developing custom preprocessor plugins and callbacks
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter expects you to have a build of the Clang executable. You can obtain
+    this by running the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here is a useful command to print textual content right after preprocessing:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `-E` command-line option for `clang` is pretty useful for printing textual
+    content right after preprocessing. As an example, `foo.c` has the following content:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Use the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding command will give you this output:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, `HELLO` was replaced by `4` in the code. You might be able to
+    use this trick to debug when developing custom extensions in later sections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Code used in this chapter can be found at this link: [https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter06](https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter06).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with SourceLocation and SourceManager
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When working closely with source files, one of the most fundamental questions
+    is how a compiler frontend would be able to *locate* a piece of string in the
+    file. On one hand, printing format messages well (compilation error and warning
+    messages, for example) is a crucial job, in which accurate line and column numbers
+    must be displayed. On the other hand, the frontend might need to manage multiple
+    files at a time and access their in-memory content in an efficient way. In Clang,
+    these questions are primarily handled by two classes: `SourceLocation` and `SourceManager`.
+    We''re going to give you a brief introduction to them and show how to use them
+    in practice in the rest of this section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing SourceLocation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `SourceLocation` class is used for representing the location of a piece
+    of code in its file. When it comes to its implementation, using `SourceLocation`
+    instances are *extensively* used in Clang's code base and basically live through
+    the entire frontend compilation pipeline. Therefore, it's important to use a concise
+    way to store its information rather than two 32-bit integers (and this might not
+    even be sufficient since we also want to know the origin file!), which can easily
+    bloat Clang's runtime-memory footprint.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Clang solves this problem by using the elegantly designed `SourceLocation` as
+    the `SourceLocation` only uses a single unsigned integer under the hood, which
+    also means its instances are `SourceLocation` is merely a pointer, it will only
+    be meaningful and useful when put side by side with the *data buffer* we just
+    mentioned, which is managed by the second main character in this story, `SourceManager`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Other useful utilities
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`SourceRange` is a pair of `SourceLocation` objects that represents the starting
+    and ending of a source code range; `FullSourceLocation` encapsulates the normal
+    `SourceLocation` class and its associated `SourceManager` class into one class
+    so that you only need to carry a single `FullSourceLocation` instance instead
+    of two objects (a `SourceLocation` object and a `SourceManager` object).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Trivially copyable
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: We were usually taught that unless there is a good reason, you should avoid
+    passing an object by its value (as a function call argument, for example) in normal
+    situations when writing C++. Since it involves lots of *copying* on the data members
+    under the hood, you should pass by pointers or references instead. However, if
+    carefully designed, a class type instance can be copied back and forth without
+    lots of effort—for example, a class with no member variable or few member variables,
+    plus a default copy constructor. If an instance is trivially copyable, you're
+    encouraged to pass it by its value.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Introducing SourceManager
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The `SourceManager` class manages all of the source files stored inside the
+    memory and provides interfaces to access them. It also provides APIs to deal with
+    source code locations, via `SourceLocation` instances we just introduced. For
+    example, to get the line and column number from a `SourceLocation` instance, run
+    the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `Line` and `Column` variables in the preceding code snippet are the line
+    and column number of the source location pointed by `SLoc`, respectively.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You might wonder why we are using the term `spellingLineNumber` instead of just
+    `LineNumber` in the preceding code snippet. It turns out that in the cases of
+    macro expansion (or any expansion happening during preprocessing), Clang keeps
+    track of the macro content's `SourceLocation` instance before and after the expansion.
+    A spelling location represents the location where the source code was originally
+    *written*, whereas an expansion location is where the macro is expanded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can also create a new spelling and expansion association using the following
+    API:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: The returned `NewSLoc` is now associated with both the spelling and expanded
+    locations that can be queried using `SourceManager`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These are the important concepts and APIs that will help you dealing with source
+    code locations— especially when working with the preprocessor—in later chapters.
+    The next section will give you some background on preprocessor and lexer development
+    in Clang, which will be useful when working on the project in the later, *Developing
+    custom preprocessor plugins and callbacks* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning preprocessor and lexer essentials
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous, *Working with SourceLocation and SourceManager* section, we've
+    learned how source locations, which are an important part of the preprocessor,
+    are represented in Clang. In this section, we will first explain the principle
+    of Clang's preprocessor and lexer, along with their working flow. Then, we'll
+    go into some of the important components in this flow and briefly explain their
+    usage in the code. These will also prepare you for the project in the, *Developing
+    custom preprocessor plugins and callbacks* section later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding the role of the preprocessor and lexer in Clang
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The roles and primary actions performed by Clang''s preprocessor and lexer,
+    represented by the `Preprocessor` and `Lexer` classes respectively, are illustrated
+    in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.1 – Role of the Clang preprocessor and lexer'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_6.01_B14590.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 6.1 – Role of the Clang preprocessor and lexer
+  prefs: []
+  type: TYPE_NORMAL
+- en: We believe most readers here will be familiar with the concept of a **token**
+    in the context of the lexer—a substring from the original source code that acts
+    as the minimum building block for semantic reasoning. In some of the traditional
+    compilers, the lexer is responsible for chopping the input source code into a
+    sequence of tokens or a **token stream**, as shown in the preceding diagram. This
+    token stream will later be fed into the parser to construct the semantic structure.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Implementation-wise, Clang takes a slightly different path from traditional
+    compilers (or those from textbooks): `Lexer`, employed by `Preprocessor`, is still
+    the primary performer to cut source code into tokens. However, `Lexer` keeps its
+    hands off whenever encountering a preprocessor directive (that is, anything that
+    starts with a `#`) or a symbol, and relays that task to either the macro expansion,
+    the header file resolver, or pragma handlers that are organized by the `Preprocessor`.
+    These assisting components inject extra tokens, if needed, into the main token
+    stream, which would eventually be returned back to the user of `Preprocessor`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In other words, most consumers of the token stream don''t directly interact
+    with `Lexer`, but with the `Preprocessor` instances. This makes people call the
+    `Lexer` class a *raw* lexer (as shown in the previous diagram), since `Lexer`
+    by itself only generates a token stream that hasn''t been preprocessed. To give
+    you a more concrete idea of how to use `Preprocessor` to retrieve a token (stream),
+    the following simple code snippet has been provided. This shows a way to get the
+    next token from the source code currently processing it:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you might have guessed, `Token` is the class representing a single token
+    in Clang, which we're going to introduce shortly in the next paragraph.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Understanding Token
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The `Token` class is the representation of a single token, either from the source
+    code or a *virtual* one that served a special purpose. It is also used extensively
+    by the preprocessing/lexing framework, just like `SourceLocation` that we introduced
+    earlier. Thus, it is designed to be very concise in memory and trivially copyable
+    as well.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the `Token` class, there are two things we want to highlight here, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Token kind** tells you what this token is.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`IdentifierInfo` class to carry extra identifier information, which we''re
+    going to cover later in this section.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Token kind
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'The token kind tells you *what* this `Token` is. Clang''s `Token` is designed
+    to represent not just concrete, physical-language constructions such as keywords
+    and symbols, but also virtual concepts that are inserted by the parser in order
+    to encode as much information as possible using a single `Token`. To visualize
+    the token stream''s token kinds, you can use the following command-line option:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`foo.cc` has the following content:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This is the output of the preceding command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: The highlighted parts are the token kinds for each token. The full list of token
+    kinds can be found in `clang/include/clang/Basic/TokenKinds.def`. This file is
+    a useful reference to know the mapping between any language construction (for
+    example, the `return` keyword) and its token kind counterpart (`kw_return`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although we can''t visualize the virtual tokens—or `::` (the `coloncolon` token
+    kind in the preceding directive) has several different usages. For example, it
+    can either be for namespace resolution (more formally called *scope resolution*
+    in *C++*), as shown in the code snippet earlier, or it can be (optionally) used
+    with the `new` and `delete` operators, as illustrated in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: To make the parsing processing more efficient, the parser will first try to
+    resolve whether the `coloncolon` token is a scope resolution or not. If it is,
+    the token will be replaced by an `annot_cxxscope` annotation token.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, let''s see the API to retrieve the token kind. The `Token` class provides
+    a `getKind` function to retrieve its token kind, as illustrated in the following
+    code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, if you''re only doing checks, just like in the preceding snippet,
+    a more concise function is available, as illustrated here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Though many times, knowing the token kind of a `Token` is sufficient for processing,
+    some language structures require more evidence to judge (for example, tokens that
+    represent a function name, in which case the token kind, `identifier`, is not
+    as important as the name string). Clang uses a specialized class, `IdentifierInfo`,
+    to carry extra information such as the symbol name for any identifier in the language,
+    which we're going to cover in the next paragraph.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Identifier
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Standard C/C++ uses the word `Token` that fit into the language''s standard
+    definition of an identifier with an auxiliary `IdentifierInfo` object. This object
+    encloses properties such as the underlying string content or whether this identifier
+    is associated with a macro function. Here is how you would retrieve the `IdentifierInfo`
+    instance from a `Token` type variable `Tok`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding `getIdentifierInfo` function returns null if `Tok` is not representing
+    an identifier by the language standard's definition. Note that if two identifiers
+    have the *same textual content*, they are represented by the same `IdentifierInfo`
+    object. This comes in handy when you want to compare whether different identifier
+    tokens have the same textual contents.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using a dedicated `IdentifierInfo` type on top of various token kinds has the
+    following advantages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: For a `Token` with an `identifier` token kind, we sometimes want to know if
+    it has been associated with a macro. You can find this out with the `IdentifierInfo::hasMacroDefinition`
+    function.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: For a token with an `identifier` token kind, storing underlying string content
+    in auxiliary storage (that is, the `IdentifierInfo` object) can save a `Token`
+    object's memory footprint, which is on the hot path of the frontend. You can retrieve
+    the underlying string content with the `IdentifierInfo::getName` function.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For a `Token` that represents language keywords, though the framework already
+    provides dedicated token kinds for these sorts of tokens (for example, `kw_return`
+    for the `return` keyword), some of these tokens only become language keywords
+    in later language standards. For example, the following snippet is legal in standards
+    before C++11:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You could compile it with the following command:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In the next sub-section, we''re going to introduce the last important `Preprocessor`
+    concept of this section: how `Preprocessor` handles *macros* in C-family languages.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Handling macros
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Implementations for **macros** of C-family languages are non-trivial. In addition
+    to challenges on source locations as we introduced earlier—how do we carry source
+    locations of both the macro definitions and the place they''re expanded—the ability
+    to re-define and undefine a macro name complicates the whole story. Have a look
+    at the following code snippet for an example of this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding C code showed that the definition of `FOO` (if `FOO` is defined)
+    varies on different lexical locations (different lines).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Local versus Module macros
+  prefs: []
+  type: TYPE_NORMAL
+- en: C++20 has introduced a new language concept called `export`. We only cover local
+    macros in this book.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To model this concept, Clang has constructed a system to record the chain of
+    definitions and un-definitions. Before explaining how it works, here are three
+    of the most important components of this system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`MacroDirective`: This class is the logical representation of a `#define` or
+    a `#undef` *statement* of a given macro identifier. As shown in the preceding
+    code example, there can be multiple `#define` (and `#undef`) statements on the
+    same macro identifier, so eventually these `MacroDirective` objects will form
+    a chain ordered by their lexical appearances. To be more specific, the `#define`
+    and `#undef` directives are actually represented by subclasses of `MacroDirective`,
+    `DefMacroDirective`, and `UndefMacroDirective`, respectively.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`MacroDefinition`: This class represents the *definition* of a macro identifier
+    at the current time point. Rather than containing the full macro definition body,
+    this instance is more like a pointer pointing to different macro bodies, which
+    are represented by the `MacroInfo` class that will be introduced shortly, upon
+    resolving a different `MacroDirective` class. This class can also tell you the
+    (latest) `DefMacroDirective` class that defines this `MacroDefinition` class.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`MacroInfo`: This class contains the body, including tokens in the body and
+    macro arguments (if any) of a macro definition.'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Here is a diagram illustrating the relationship of these classes in regard
+    to the sample code earlier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 6.2 – How different C++ classes for a macro are related to the previous
+    code example'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_6.02_B14590.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 6.2 – How different C++ classes for a macro are related to the previous
+    code example
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To retrieve the `MacroInfo` class and its `MacroDefinition` class, we can use
+    the following `Preprocessor` APIs, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `IdentifierInfo` type argument, `MacroII`, shown in the preceding code
+    snippet, represents the macro name. To further examine the macro body, run the
+    following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'From this section, you''ve learned the working flow of `Preprocessor`, as well
+    as two important components: the `Token` class and the sub-system that handles
+    macros. Learning these two gives you a better picture of how Clang''s preprocessing
+    works and prepares you for the `Preprocessor` plugin and custom callbacks development
+    in the next section.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Developing custom preprocessor plugins and callbacks
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: As flexible as other parts of LLVM and Clang, Clang's preprocessing framework
+    also provides a way to insert custom logic via plugins. More specifically, it
+    allows developers to write plugins to handle custom `#pragma my_awesome_feature`).
+    In addition, the `Preprocessor` class also provides a more general way to define
+    custom callback functions in reaction to arbitrary `#include` directive is resolved,
+    to name but a couple of examples. In this section, we're going to use a simple
+    project that leverages both techniques to demonstrate their usage.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The project goal and preparation
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'Macros in C/C++ have always been notorious for poor *design hygiene* that could
+    easily lead to coding errors when used without care. Have a look at the following
+    code snippet for an example of this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`PRINT` in the preceding code snippet looks just like a normal function, thus
+    it''s easy to believe that this program will print out `8`. However, `PRINT` is
+    a macro function rather than a normal function, so when it''s expanded, the `main`
+    function is equivalent to this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Therefore, the program actually prints `7`. This ambiguity can of course be
+    solved by wrapping every occurrence of the `val` macro argument in the macro body
+    with parenthesis, as illustrated in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Therefore, after macro expansion, the `main` function will look like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The project we''re going to do here is to develop a custom `#pragma` syntax
+    to warn developers if a certain macro argument, designated by programmers, is
+    not properly enclosed in parentheses, for the sake of preventing the preceding
+    *hygiene* problems from happening. Here is an example of this new syntax:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: Similar to previous example, if an occurrence of the preceding `val` argument
+    is not enclosed in parentheses, this might introduce potential bugs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In the new `macro_arg_guard` pragma syntax, tokens following the pragma name
+    are the macro argument names to check in the next macro function. Since `val`
+    in the `val * 94` expression from the preceding code snippet is not enclosed in
+    parentheses, it will print the following warning message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: This project, albeit being a *toy example*, is actually pretty useful when the
+    macro function becomes pretty big or complicated, in which case manually adding
+    parentheses on *every* macro argument occurrence might be an error-prone task.
+    A tool to catch this kind of mistake would definitely be helpful.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before we dive into the coding part, let''s set up the project folder. Here
+    is the folder structure:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `MacroGuardPragama.cpp` file includes a custom `PragmaHandler` function,
+    which we're going to cover in the next section, *Implementing a custom pragma
+    handler*. For `MacroGuardValidator.h/.cpp`, this includes a custom `PPCallbacks`
+    function used to check if the designated macro body and arguments conform to our
+    rules here. We will introduce this in the later, *Implementing custom preprocessor
+    callbacks* section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Since we''re setting up an out-of-tree project here, please refer to the *Understanding
+    CMake integration for out-of-tree projects* section of [*Chapter 2*](B14590_02_Final_JC_ePub.xhtml#_idTextAnchor029),
+    *Exploring LLVM''s Build System Features*, in case you don''t know how to import
+    LLVM''s own CMake directives (such as the `add_llvm_library` and `add_llvm_executable`
+    CMake functions). And because we''re also dealing with Clang here, we need to
+    use a similar way to import Clang''s build configurations, such as the `include`
+    folder path shown in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: The reason we don't need to set up Clang's library path here is because normally,
+    plugins will dynamically link against libraries' implementations provided by the
+    loader program (in our case, the `clang` executable) rather than linking those
+    libraries explicitly during build time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we''re adding the plugin''s build target, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The PLUGIN_TOOL argument
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After setting up the `CMake` script and building the plugin, you can use the
+    following command to run the plugin:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Of course, we haven't currently written any code, so nothing is printed out.
+    In the next section, we will first develop a custom `PragmaHandler` instance to
+    implement our new `#pragma macro_arg_guard` syntax.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing a custom pragma handler
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The first step of implementing the aforementioned features is to create a custom
+    `#pragma` handler. To do so, we first create a `MacroGuardHandler` class that
+    derives from the `PragmaHandler` class inside the `MacroGuardPragma.cpp` file,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `HandlePragma` callback function will be invoked whenever the `Preprocessor`
+    encounters a non-standard pragma directive. We''re going to do two things in this
+    function, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Retrieve any supplement tokens—treated as the `macro_arg_guard`).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Register a `PPCallbacks` instance that scans the body of the next macro function
+    definition to see if specific macro arguments are properly enclosed by parentheses
+    in there. We will outline the details of this task next.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'For the first task, we are leveraging `Preprocessor` to help us parse the pragma
+    arguments, which are macro argument names to be enclosed. When `HandlePragma`
+    is called, the `Preprocessor` is stopped at the place right after the pragma name
+    token, as illustrated in the following code snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'So, all we need to do is keep lexing and storing those tokens until hitting
+    the end of this line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `eod` token kind in the preceding code snippet means **end of directive**.
+    It is exclusively used to mark the end of a preprocessor directive.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For the `ArgsToEscped` variable, the following global array stores the designated
+    macro argument''s `IdentifierInfo` objects:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: The reason we're declaring `ArgsToEnclosed` in a global scope is that we're
+    using it to *communicate* with our `PPCallbacks` instance later, which will use
+    that array content to perform the validations.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Though the implementation details of our `PPCallbacks` instance, the `MacroGuardValidator`
+    class, will not be covered until the next section, it needs to be registered with
+    the `Preprocessor` when the `HandlePragma` function is called for the first time,
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: We also use a flag to make sure it is only registered once. After this, whenever
+    a preprocessing event happens, our `MacroGuardValidator` class will be invoked
+    to handle it. In our case, we are only interested in the `macro definition` event,
+    which signals to `MacroGuardValidator` to validate the macro body that it just
+    defined.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before wrapping up on `PragmaHandler`, we need some extra code to transform
+    the handler into a plugin, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: After declaring this variable, when this plugin is loaded into `clang`, a `MacroGuardHandler`
+    instance is inserted into a global `PragmaHandler` registry, which will be queried
+    by the `Preprocessor` whenever it encounters a non-standard `#pragma` directive.
+    Now, Clang is able to recognize our custom `macro_arg_guard` pragma when the plugin
+    is loaded.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Implementing custom preprocessor callbacks
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: '`Preprocessor` provides a set of callbacks, the `PPCallbacks` class, which
+    will be triggered when certain preprocessor events (such as a macro being expanded)
+    happen. The previous, *Implementing a custom pragma handler* section, showed you
+    how to register your own `PPCallbacks` implementations, the `MacroGuardValidator`,
+    with `Preprocessor`. Here, we''re going to show you how `MacroGuardValidator`
+    validates the macro argument-escaping rule in macro functions.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, in `MacroGuardValidator.h/.cpp`, we put the following skeleton:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: Among all the callback functions in `PPCallbacks`, we're only interested in
+    `MacroDefined`, which will be invoked when a macro definition is processed, represented
+    by the `MacroDirective` type function argument (`MD`). The `SourceManager` type
+    member variable (`SM`) is used for printing `SourceLocation` when we need to show
+    some warning messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Focusing on `MacroGuardValidator::MacroDefined`, the logic here is pretty simple:
+    for each identifier in the `ArgsToEnclosed` array, we''re scanning macro body
+    tokens to check if its occurrences have parentheses as its predecessor and successor
+    tokens. First, let''s put in the loop''s skeleton, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If a macro body token''s `IdentifierInfo` argument matches `ArgII`, this means
+    there is a macro argument occurrence, and we check that token''s previous and
+    next tokens, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: Uniqueness of `IdentifierInfo` instances
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recall that same identifier strings are always represented by the same `IdentifierInfo`
+    object. That's the reason we can simply use pointer comparison here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `MacroInfo::tokens_begin` function returns an iterator pointing to the beginning
+    of an array carrying all the macro body tokens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, we print a warning message if the macro argument token is not enclosed
+    by parentheses, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: And that's all for this section. You're now able to develop a `PragmaHandler`
+    plugin that can be dynamically loaded into Clang to handle custom `#pragma` directives.
+    You've also learned how to implement `PPCallbacks` to insert custom logic whenever
+    a preprocessor event happens.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The preprocessor and lexer mark the beginning of a frontend. The former replaces
+    preprocessor directives with other textual contents, while the latter cuts source
+    code into more meaningful tokens. In this chapter, we've learned how these two
+    components cooperate with each other to provide a single view of token streams
+    to work on in later stages. In addition, we've also learned about various important
+    APIs—such as the `Preprocessor` class, the `Token` class, and how macros are represented
+    in Clang—that can be used for the development of this part, especially for creating
+    handler plugins to support custom `#pragma` directives, as well as creating custom
+    preprocessor callbacks for deeper integration with preprocessing events.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Following the order of Clang's compilation stages, the next chapter will show
+    you how to work with an **abstract syntax tree** (**AST**) and how to develop
+    an AST plugin to insert custom logic into it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Exercises
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here are some simple questions and exercises that you might want to play around
+    with by yourself:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though most of the time `Tokens` are harvested from provided source code, in
+    some cases, `Tokens` might be generated dynamically inside the `Preprocessor`.
+    For example, the `__LINE__` built-in macro is expanded to the current line number,
+    and the `__DATE__` macro is expanded to the current calendar date. How does Clang
+    put that generated textual content into the source code buffer of `SourceManager`?
+    How does Clang assign `SourceLocation` to these tokens?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: When we were talking about implementing a custom `PragmaHandler`, we were leveraging
+    `Preprocessor::Lex` to fetch `Tokens` followed after the pragma name, until we
+    hit the `eod` token kind. Can we keep lexing *beyond* the `eod` token? What interesting
+    things will you do if you can consume arbitrary tokens after the `#pragma` directive?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'In the `macro guard` project from the *Developing custom preprocessor plugins
+    and callbacks* section, the warning message has the format of `[WARNING] In <source
+    location>: ….`. Apparently, this is not a typical compiler warning we see from
+    `clang`, which looks like `<source location>: warning: …`, as shown in the following
+    code snippet:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The `warning` string is even colored in supported terminals. How can we print
+    a warning message such as that? Is there an infrastructure in Clang for doing
+    that?
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL

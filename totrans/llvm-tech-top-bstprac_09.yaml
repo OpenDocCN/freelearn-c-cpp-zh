@@ -1,0 +1,1311 @@
+- en: '*Chapter 7*: Handling AST'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous chapter, we learned how Clang's preprocessor handles preprocessing
+    directives in C-family languages. We also learned how to write different kinds
+    of preprocessor plugins, such as pragma handlers, to extend Clang's functionalities.
+    Those skills are especially useful when it comes to implementing field-specific
+    logic or even custom language features.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we're going to talk about a **semantic-aware** representation
+    of the original source code file once it has been parsed, known as an **Abstract
+    Syntax Tree (AST)**. An AST is a format that carries rich semantic information,
+    including types, expression trees, and symbols, to name a few. It is not only
+    used as a blueprint to generate LLVM IR for later compilation stages but is also
+    the recommended format for performing static analysis. On top of that, Clang also
+    provides a nice framework for developers to intercept and manipulate AST in the
+    middle of the frontend pipeline via a simple plugin interface.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we are going to cover how to process AST in Clang, the important
+    APIs for in-memory AST representation, and how to write AST plugins to implement
+    custom logic with little effort. We will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning about AST in Clang
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Writing AST plugins
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: By the end of this chapter, you will know how to work with AST in Clang in order
+    to analyze programs at the source code level. In addition, you will know how to
+    inject custom AST processing logic into Clang in an easy way via AST plugins.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'This chapter expects that you have a build of the `clang` executable. If you
+    don''t, please build it using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In addition, you can use the following command-line flag to print out the textual
+    representation of AST:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For example, let''s say `foo.c` contains the following content:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'By using the `-Xclang -ast-dump` command-line flag, we can print out AST for
+    `foo.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: This flag is useful for finding out what C++ class is used to represent a certain
+    part of the code. For example, the formal function parameter/argument is represented
+    by the `ParmVarDecl` class, which is highlighted in the previous code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code samples for this chapter can be found here: [https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter07](https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter07).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning about AST in Clang
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this section, we are going to learn about Clang's AST in-memory representation
+    and its essential API usage. The first part of this section will provide you with
+    a high-level overview of Clang AST's hierarchy; the second part will focus on
+    a more specific topic regarding type representation in Clang AST; and the final
+    part will show you the basic usage of AST matcher, which is extremely useful when
+    you're writing an AST plugin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In-memory structure of Clang AST
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The in-memory representation of AST in Clang is organized in a hierarchy structure
+    that resembles the syntax structure of C-family language programs. Starting from
+    the top-most level, there are two classes worth mentioning:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`TranslationUnitDecl`: This class represents an input source file, also called
+    a translation unit (most of the time). It contains all the top-level declarations
+    – global variables, classes, and functions, to name a few – as its children, where
+    each of those top-level declarations has its own subtree that recursively defines
+    the rest of the AST.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ASTContext`: As its name suggests, this class keeps track of all the AST nodes
+    and other metadata from the input source files. If there are multiple input source
+    files, each of them gets its own `TranslationUnitDecl`, but they all share the
+    same `ASTContext`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'In addition to the structure, the body of the AST – the AST nodes – can be
+    further classified into three primary categories: `Decl`, `Expr`, and `Stmt` classes,
+    respectively. In the following sections, we are going to introduce each of these
+    in-memory AST representations.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Declarations
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Language constructs such as variable declarations (global and local), functions,
+    and struct/class declarations are represented by subclasses of `Decl`. Though
+    we are not going to go into each of these subclasses here, the following diagram
+    shows common declaration constructions in C/C++ and their corresponding AST classes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.1 – Common declarations in C/C++ and their AST classes'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.1_B14590.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.1 – Common declarations in C/C++ and their AST classes
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Between more concrete subclasses, such as `FunctionDecl` and `Decl`, there
+    are several important *abstract* classes that represent certain language concepts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`NamedDecl`: For every declaration that has a name.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ValueDecl`: For declarations whose declared instances can be a value, and
+    thus are associated with type information.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`DeclaratorDecl`: For every declaration that uses declarator (basically a statement
+    in the form of `<type and qualifier> <identifier name>`). They provide extra information
+    about parts other than the identifier. For example, they provide access to an
+    in-memory object with namespace resolution, which acts as a qualifier in the declarator.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: To learn more about AST classes for other kinds of declarations, you can always
+    navigate through the subclasses of `Decl` on LLVM's official API reference website.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Statements
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Most directives in a program that represent the concept of *actions* can be
+    classified as statements and are represented by subclasses of `Stmt`, including
+    *expressions*, which we are going to cover shortly. In addition to imperative
+    statements such as function calls or return sites, `Stmt` also covers structural
+    concepts such as `for` loops and `if` statements. Here is a diagram showing a
+    common language construct represented by `Stmt` (except expression) in C/C++ and
+    its corresponding AST classes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.2 – Common statements (excluding expressions) in C/C++ and their
+    AST classes'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.2_B14590.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.2 – Common statements (excluding expressions) in C/C++ and their AST
+    classes
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'There are two things worth mentioning about the previous diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CompoundStmt`, which is a container for multiple statements, represents not
+    only the function body but basically any code block enclosed by curly braces `(''{'',
+    ''}'')`. Therefore, though not shown in the preceding diagram due to a lack of
+    space, `IfStmt`, `ForStmt`, `WhileStmt`, and `SwitchStmt` all have a `CompoundStmt`
+    child node representing their bodies.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Declarations in a `CompoundStmt` will be wrapped by a `DeclStmt` node, in which
+    the real `Decl` instance is its child node. This creates a simpler AST design.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Statements are one of the most prevailing directives in a typical C/C++ program.
+    It is worth noting, however, that many statements are organized in a hierarchy
+    (for example, `ForStmt` and its loop body), so it might take you extra steps to
+    go down this hierarchy before you find the desired `Stmt` node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Expressions
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Expressions in Clang AST are a special kind of statement. Different from other
+    statements, expressions always generate *values*. For example, a simple arithmetic
+    expression, *3 + 4*, is expected to generate an integer value. All expressions
+    in Clang AST are represented by subclasses of `Expr`. Here is a diagram showing
+    a common language construct represented by `Expr` in C/C++ and its corresponding
+    AST classes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.3 – Common expressions in C/C++ and their AST classes'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.3_B14590.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.3 – Common expressions in C/C++ and their AST classes
+  prefs: []
+  type: TYPE_NORMAL
+- en: One important `Expr` class is `DeclRefExpr`. It represents the concept of symbol
+    reference. You can use one of its APIs, `DeclRefExpr::getDecl()`, to retrieve
+    the referenced symbol's `Decl` object. Handy symbol information like this only
+    appears after AST has been generated, so this is one of the reasons people always
+    recommend implementing static analysis logic on AST rather on more primitive forms
+    (inside the parser, for example).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another interesting `Expr` class – not highlighted in the preceding diagram
+    due to a lack of space – is `ParenExpr`, which represents the parentheses that
+    wrap around an expression. For example, in the preceding diagram, `ParenExpr`
+    with a `BinaryOperator` representing **x + 1** as its child.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Types in Clang AST
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: The type system is one of the most crucial components in modern compilers, especially
+    for statically typed languages such as C/C++. Type checking ensures that the input
+    source code is well-formed (to some extent) and catches as many errors as possible
+    at compile time. While we don't need to do type checking by ourselves in Clang,
+    it is done by the `Sema` subsystem, which we introduced in [*Chapter 5*](B14590_05_Final_JC_ePub.xhtml#_idTextAnchor067),
+    *Exploring Clang's Architecture*. You will probably need to leverage this information
+    when you're processing the AST. Let's learn how types are modeled in Clang AST.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Core classes
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: The core of Clang AST's type system is the `clang::Type` class. Each type in
+    the input code – including primitive types such as `int` and user-defined types
+    such as struct/class – is represented by a `Type`) object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Terminology
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the rest of this chapter, we will call types in the input source code **source
+    code types**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `Type` object for each of those types. One of the biggest advantages of this
+    design is that you have an easier way to compare two `Type` objects. Let's say
+    you have two `Type` pointers. By doing a simple pointer comparison (which is extremely
+    fast) on them, you can tell if they're representing the same source code type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Counter Example of a Singleton Design
+  prefs: []
+  type: TYPE_NORMAL
+- en: If `Type` in Clang AST is not using a singleton design, to compare if two `Type`
+    pointers are representing the same source code types, you need to inspect the
+    content of the objects they are pointing to, which is not efficient.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'As we mentioned earlier, each source code type is actually represented by a
+    subclass of `Type`. Here are some common `Type` subclasses:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`BuiltinType`: For primitive types such as `int`, `char`, and `float`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`PointerType`: For all the pointer types. It has a function called `PointerType::getPointee()`
+    for retrieving the source code type being pointed to by it.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ArrayType`: For all the array types. Note that it has other subclasses for
+    more specific arrays that have either a constant or variable length.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`RecordType`: For struct/class/union types. It has a function called `RecordType::getDecl()`
+    for retrieving the underlying `RecordDecl`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`FunctionType`: For representing a function''s signature; that is, a function''s
+    argument types and return type (and other properties, such as its calling convention).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Let us now move on to the qualified types.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Qualified types
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: One of the most confusing things for people new to Clang's code base is that
+    many places use the `QualType` class rather than subclasses of `Type` to represent
+    source code types. `QualType` stands for `Type` to represent concepts such as
+    `const <type>`, `volatile <type>`, and `restrict <type>*`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To create a `QualType` from a `Type` pointer, you can use the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this section, we learned about the type system in Clang AST. Let's now move
+    on to ASTMatcher, a syntax to match patterns.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ASTMatcher
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'When we are dealing with a program''s AST – for example, we''re checking if
+    there is any suboptimal syntax – searching for specific AST nodes *pattern* is
+    usually the first step, and one of the most common things people do. Using the
+    knowledge we learned in the previous section, we know that this kind of pattern
+    matching can be done by iterating through AST nodes via their in-memory classes
+    APIs. For example, given a `FunctionDecl` – the AST class of a function – you
+    can use the following code to find out if there is a `while` loop in its body
+    and if the exit condition of that loop is always a literal Boolean value; that
+    is, `true`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, it created more than three (indention) layers of `if` statements
+    to complete such a simple check. Not to mention in real-world cases, we need to
+    insert even more sanity checks among these lines! While Clang's AST design is
+    not hard to understand, we need a more *concise* syntax to complete pattern matching
+    jobs. Fortunately, Clang has already provided one – the **ASTMatcher**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'ASTMatcher is the utility that helps you write AST pattern matching logic via
+    a clean, concise, and efficient **Domain-Specific Language** (**DSL**). Using
+    ASTMatcher, doing the same matching shown in the previous snippet only takes few
+    lines of code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Most of the directives in the preceding snippet are pretty straightforward:
+    function calls such as `compoundStmt(…)` and `whileStmt(…)` check if the current
+    node matches a specific node type. Here, the arguments in these function calls
+    either represent pattern matchers on their subtree or check additional properties
+    of the current node. There are also other directives for expressing qualifying
+    concepts (for example, *for all substatements in this loop body, a return value
+    exists*), such as `hasAnySubstatement(…)`, and directives for expressing data
+    type and constant values such as the combination of `cxxBoolLiteral(equals(true))`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: In short, using ASTMatcher can make your pattern matching logic more *expressive*.
+    In this section, we showed you the basic usage of this elegant DSL.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Traversing AST
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Before we dive into the core syntax, let's learn how ASTMatcher traverses AST
+    and how it passes the result back to users after the matching process is completed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`MatchFinder` is a commonly used driver for the pattern matching process. Its
+    basic usage is pretty simple:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`pattern1` and `pattern2` are pattern objects that are constructed by DSL,
+    as shown previously. What''s more interesting is the `traverse` function and the
+    `TK_AsIs` argument. The `traverse` function is a part of the pattern matching
+    DSL, but instead of expressing patterns, it describes the action of traversing
+    AST nodes. On top of that, the `TK_AsIs` argument represents the *traversing mode*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When we showed you the command-line flag for dumping AST in textual format
+    (`-Xclang -ast-dump`) earlier in this chapter, you may have found that many *hidden
+    AST nodes* were inserted into the tree to assist with the program''s semantics
+    rather than representing the real code that was written by the programmers. For
+    example, `ImplicitCastExpr` is inserted in lots of places to ensure the program''s
+    type correctness. Dealing with these nodes might be a painful experience when
+    you''re composing pattern matching logic. Thus, the `traverse` function provides
+    an alternative, *simplified*, way to traverse the tree. Let''s say we have the
+    following input source code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When you pass `TK_AsIs` as the first argument to `traverse`, it observes the
+    tree, similar to how `-ast-dump` does:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'However, by using `TK_IgnoreUnlessSpelledInSource` as the first argument, the
+    tree that''s observed is equal to the following one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: As its name suggests, `TK_IgnoreUnlessSpelledInSource` only visit nodes that
+    are really shown in the source code. This greatly simplifies the process of writing
+    a matching pattern since we don't need to worry about the nitty-gritty details
+    of AST anymore.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On the other hand, `Callback1` and `Callback2` in the first snippet are `MatchFinder::MatchCallback`
+    objects that describe the actions to perform when there is a match. Here is the
+    skeleton of a `MatchCallback` implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the next section, we will show you how to bind a specific part of the pattern
+    with a tag and retrieve it in `MatchCallback`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Last but not least, though we used `MatchFinder::match` and `MatchFinder::matchAST`
+    in the first snippet to kick off the matching process, there are other ways to
+    do this. For example, you can use `MatchFinder::newASTConsumer` to create an `ASTConsumer`
+    instance that will run the described pattern matching activity. Alternatively,
+    you can use `ast_matchers::match(…)` (not a member function under `MatchFinder`
+    but a standalone function) to perform matching on a provided pattern and `ASTContext`
+    in a single run, before returning the matched node.
+  prefs: []
+  type: TYPE_NORMAL
+- en: ASTMatcher DSL
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: ASTMatcher provides an easy-to-use and concise C++ DSL to help with matching
+    AST. As we saw earlier, the *structure* of the desired pattern is expressed by
+    nested function calls, where each of these functions represents the *type* of
+    AST node to match.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Using this DSL to express simple patterns cannot be easier. However, when you''re
+    trying to compose patterns with multiple conditions/predicates, things get a little
+    bit more complicated. For example, although we know a for loop (for example, `for(I
+    = 0; I < 10; ++I){…}`) can be matched by the `forStmt(…)` directive, how do we
+    add a condition to its initialize statement (`I = 0` ) and exit the condition
+    (`I < 10`) or its loop body? Not only does the official API reference site (the
+    doxygen website we usually use) lacks clear documentation on this part, most of
+    these DSL functions are also pretty flexible in how they accept a wide range of
+    arguments as their subpatterns. For example, following the question on matching
+    a `for` loop, you can use the following code to check only the loop''s body:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Alternatively, you can check its loop body and its exit condition, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: A generalized version of this question would be, given an arbitrary DSL directive,
+    how do we know the *available* directives that can be combined with it?
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To answer this question, we will leverage a documentation website LLVM specifically
+    created for ASTMatcher: [https://clang.llvm.org/docs/LibASTMatchersReference.html](https://clang.llvm.org/docs/LibASTMatchersReference.html).
+    This website consists of a huge three-column table showing the returned type and
+    argument types for each of the DSL directives:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.4 – Part of the ASTMatcher DSL reference'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.4_B14590.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.4 – Part of the ASTMatcher DSL reference
+  prefs: []
+  type: TYPE_NORMAL
+- en: Though this table is just a simplified version of normal API references, it
+    already shows you how to search for candidate directives. For example, now that
+    you know `forStmt(…)` takes zero or multiple `Matcher<ForStmt>`, we can search
+    this table for directives that return either `Matcher<ForStmt>` or `Matcher<(parent
+    class of ForStmt)>`, such as `Matcher<Stmt>`. In this case, we can quickly spot
+    `hasCondition`, `hasBody`, `hasIncrement`, or `hasLoopInit` as candidates (of
+    course, many other directives that return `Matcher<Stmt>` can also be used).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When you''re performing pattern matching, there are many cases where you not
+    only want to know if a pattern matches or not but also get the matched AST nodes.
+    In the context of ASTMatcher, its DSL directives only check the *type* of the
+    AST nodes. If you want to retrieve (part of the) concrete AST nodes that are being
+    matched, you can use the `bind(…)` API. Here is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we used `expr()` as a wildcard pattern to match any `Expr` node. This
+    directive also calls `bind(…)` to associate the matched `Expr` AST node with the
+    name `exit_condition`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, in `MatchCallback`, which we introduced earlier, we can retrieve the
+    bound node by using the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `getNodeAs<…>(…)` function tries to fetch the bound AST node under the given
+    name and cast it to the type suggested by the template argument.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that you're allowed to bind different AST nodes under the same name, in
+    which case only the last bounded one will be shown in `MatchCallback::run`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Putting everything together
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: Now that you've learned about both the pattern matching DSL syntax and how to
+    traverse AST using ASTMatcher, let's put these two things together.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s say we want to know the number of iterations – also known as the *trip
+    count* – that a simple `for` loop (the loop index starts from zero and is incremented
+    by one at each iteration and bounded by a literal integer) has in a function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we must write the following code for matching and traversing:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The preceding snippet also shows how *modular* DSL patterns are. You can create
+    individual pattern fragments and compose them depending on your needs, as long
+    as they're compatible.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Finally, here is what `MyMatchCallback::run` looks like:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: After this, you can use `Finder` to match the desired pattern (either by calling
+    `MatchFinder::match` or `MatchFinder::matchAST`, or by creating an `ASTConsumer`
+    using `MatchFinder::newASTConsumer`) on an AST. The matched trip count will be
+    printed to `stderr`. For instance, if the input source code is `for(int i = 0;
+    i < 10; ++i) {…}`, the output will simply be `10`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: In this section, we learned how Clang structures its AST, how Clang AST is represented
+    in memory, and how to use ASTMatcher to help developers with AST pattern matching.
+    With this knowledge, in the next section, we will show you how to create an AST
+    plugin, which is one of the easiest ways to inject custom logic into Clang's compilation
+    pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing AST plugins
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous section, we learned how AST is represented in Clang and learned
+    what its in-memory classes look like. We also learned about some useful skills
+    we can use to perform pattern matching on Clang AST. In this section, we will
+    learn how to write plugins that allow you to insert custom AST processing logic
+    into Clang's compilation pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This section will be divided into three parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Project overview**: The goal and overview of the demo project we are going
+    to create in this section.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`DiagnosticsEngine`, a powerful subsystem that helps you print out well-formatted
+    and meaningful diagnostic messages. This will make our demo project more applicable
+    to real-world scenarios.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Creating the AST plugin**: This section will show you how to create an AST
+    plugin from scratch, fill in all the implementation details, and how to run it
+    with Clang.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Project overview
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, we will create a plugin that prompts the user with warning
+    messages whenever there are `if`-`else` statements in the input code that can
+    be converted into **ternary operators**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Quick Refresher – Ternary Operator
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The ternary operator, `x? val_1 : val_2`, is evaluated to `val_1` when the
+    `x` condition is true. Otherwise, it is evaluated to `val_2`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, let''s look at the following C/C++ snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `if`-`else` statements in both functions can be converted into ternary
+    operators, like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In this project, we will only focus on finding two kinds of potential ternary
+    operator opportunities:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Both the `then` block (true branch) and the `else` block (false branch) contain
+    a single `return` statement. In this case, we can coalesce their return values
+    and the branch condition into one ternary operator (as the new returned value).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Both the `then` block and the `else` block only contain a single assignment
+    statement. Both statements use a single `DeclRefExpr` – that is, a symbol reference
+    – as the LHS, and both `DeclRefExpr` objects point to the same `Decl` (symbol).
+    In other words, we are covering the case of the `bar` function shown in the preceding
+    snippet. Note that we are not covering cases where the LHS is more complicated;
+    for example, where an array subscription, `a[i]`, is used as the LHS.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'After identifying these patterns, we must prompt warning messages to the user
+    and provide extra information to help the user fix this issue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each warning message – which tells you which `if`-`else` statement can be converted
+    into a ternary operator – is followed by two notes pointing out the potential
+    expressions to construct for the operator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Compared to handcrafting compiler messages, as we did in the *Developing custom
+    preprocessor plugins and callbacks* section of [*Chapter 6*](B14590_06_Final_JC_ePub.xhtml#_idTextAnchor078),
+    *Extending the Preprocessor*, here, we are using Clang's diagnostics infrastructure
+    to print messages that carry richer information, such as the snapshot of code
+    that the message is referring to. We will show you how to use that diagnostic
+    infrastructure next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Printing diagnostic messages
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In [*Chapter 6*](B14590_06_Final_JC_ePub.xhtml#_idTextAnchor078), *Extending
+    the Preprocessor*, we asked if you could improve the warning message format in
+    the example project shown in the *Developing custom preprocessor plugins and callbacks*
+    section, so that it's closer to the compiler messages you saw from Clang. One
+    of the solutions to that question is using Clang's diagnostic framework. We are
+    going to look at this in this section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Clang''s diagnostic framework consists of three primary parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Diagnostic IDs**'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Diagnostic engine**'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Diagnostic consumers (clients)**'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Their relationships can be seen in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 7.5 – High-level organization of Clang''s diagnostic framework'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_7.5_B14590.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 7.5 – High-level organization of Clang's diagnostic framework
+  prefs: []
+  type: TYPE_NORMAL
+- en: Diagnostic messages
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Starting from the left-hand side of the preceding diagram, most of the time,
+    a diagnostic message – for example, *use of undeclared identifier "x"* – is associated
+    with a message **template** that has its own diagnostic ID. Using the undeclared
+    identifier message, for example, its message template looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`%0` is a `x`, in the preceding example message). The number following `%`
+    also suggests which supplemental data it will use. We will cover this format in
+    detail shortly.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Templates are registered with the diagnostic engine via TableGen syntax. For
+    example, the message we are discussing here is put inside `clang/include/clang/Basic/DiagnosticSemaKinds.td`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: We highlighted two parts in the preceding snippet. First, the name of this message
+    template, `err_undeclared_var_use`, will be used later as the unique diagnostic
+    ID. Second, the `Error` TableGen class suggested that this is an error message,
+    or more formally speaking, its *diagnostic level* error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In summary, a diagnostic message consists of a unique diagnostic ID – which
+    is associated with a message template and its diagnostic level – and the supplemental
+    data to put in the placeholders of the template, if there are any.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Diagnostic consumers
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: After the diagnostic message is sent to the diagnostic engine – represented
+    by the `DiagnosticsEngine` class – the engine formats the messages into textual
+    contents and send them to one of the **diagnostic consumers** (also called **clients**
+    in the code base; we will use the term **consumer** in rest of this section).
+  prefs: []
+  type: TYPE_NORMAL
+- en: A diagnostic consumer – an implementation of the `DiagnosticConsumer` class
+    – post-processes the textual messages sent from `DiagnosticsEngine` and exports
+    them via different mediums. For example, the default `TextDiagnosticPrinter` prints
+    messages to the command-line interface; `LogDiagnosticPrinter`, on the other hand,
+    decorates the incoming messages with simple XML tags before printing them into
+    log files. In theory, you can even create a custom `DiagnosticConsumer` that sends
+    diagnostic messages to a remote host!
+  prefs: []
+  type: TYPE_NORMAL
+- en: Reporting diagnostic messages
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: 'Now that you have learned how Clang''s diagnostic framework works, let''s learn
+    how to send (report) a diagnostic message to `DiagnosticEngine`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First, we need to retrieve a reference to `DiagnosticEngine`. The engine itself
+    is sitting at the core of Clang''s compilation pipeline, so you can fetch it from
+    various primary components, such as `ASTContext` and `SourceManager`. The following
+    is an example:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Next, we need to use the `DiagnosticsEngine::Report` function. This function
+    always takes a diagnostic ID as one of its arguments. For example, to report `err_undeclared_var_use`,
+    which we introduced earlier, use the following code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Diag.Report(diag::err_undeclared_var_use) << ident_name_str;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Recall that `err_undeclared_var_use` only has one placeholder, `%0`, so it
+    picks up the first values in the following `<<` stream. Let''s say we have a diagnostic
+    message, `err_invalid_placement`, with the following template:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'You can report this using the following code:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'In addition to simple placeholders, another useful feature is the `%select`
+    directive. For example, we have a diagnostic message, `warn_exceed_limit`, with
+    a template like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Diag.Report(diag::warn_exceed_limit) << 0 as the parameter after the stream
+    operator (<<):'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: This will result in a message stating **you exceed the daily wifi limit**.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, let''s say you use another version of the `Report` function, which takes
+    an additional `SourceLocation` argument:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'test.cc:2:10: error: use of undeclared identifier ''x'''
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return x + 1;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: ^
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Last but not least, though most of the diagnostic messages are registered with
+    `DiagnosticsEngine` via TableGen code put *inside* Clang''s source tree, this
+    doesn''t mean that developers cannot create their new diagnostic messages without
+    modifying Clang''s source tree. Let''s introduce `DiagnosticsEngine::getCustomDiagID(…)`,
+    the API that creates a new diagnostic ID from a message template and diagnostic
+    level provided by developers:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Diag.Report(MyDiagID) << "cloudy";
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: In this section, you learned how to leverage Clang's diagnostic framework to
+    print out messages just like normal compiler messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, we are going to combine all the skills we've learned about in this chapter
+    to create a custom AST plugin.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating the AST plugin
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In the previous sections of this chapter, we explored Clang's AST and learned
+    how to use it in in-memory APIs. In this section, we will learn how to write a
+    plugin that helps you insert your custom AST processing logic into Clang's compilation
+    pipeline in an easy way.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In [*Chapter 5*](B14590_05_Final_JC_ePub.xhtml#_idTextAnchor067), *Exploring
+    Clang''s Architecture*, we learned about the advantages of using Clang (AST) plugins:
+    they can be developed even you are using a prebuilt `clang` executable, they are
+    easy to write, and they have good integration with the existing toolchain and
+    build systems, to name a few. In [*Chapter 6*](B14590_06_Final_JC_ePub.xhtml#_idTextAnchor078),
+    *Extending the Preprocessor*, we developed a plugin for custom pragma handling
+    in the preprocessor. In this chapter, we will also be writing a plugin, but this
+    one will be designed for custom AST processing. The code skeletons for these two
+    plugins are also quite different.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We introduced the sample project we will be using in this section in the *Project
+    overview* section. This plugin will prompt users with warning messages if some
+    `if`-`else` statements in the input code can be converted into ternary operators.
+    In addition, it also shows extra hints about candidate expressions for building
+    the ternary operator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here are the detailed steps for building the plugin:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Similar to the pragma plugin we saw in [*Chapter 6*](B14590_06_Final_JC_ePub.xhtml#_idTextAnchor078),
+    *Extending the Preprocessor*, creating a plugin in Clang is basically like implementing
+    a class. In the case of the AST plugin, this will be the `PluginASTAction` class.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '`PluginASTAction` is a subclass of `ASTFrontendAction` – a `FrontendAction`
+    specialized for handling AST (if you''re not familiar with `FrontendAction`, feel
+    free to read [*Chapter 5*](B14590_05_Final_JC_ePub.xhtml#_idTextAnchor067), *Exploring
+    Clang''s Architecture*, again). Thus, we need to implement the `CreateASTConsumer`
+    member function:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: We will fill in this function later.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'In addition to `CreateASTConsumer`, there are two other member functions we
+    can override to change some of the functionalities: `getActionType` and `ParseArgs`.
+    The former tells Clang *how* this plugin should be executed by returning one of
+    the enum values shown here:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'a. `Cmdline`: The plugin will be executed after the main action if users provide
+    the `-plugin <plugin name>` (frontend) command-line flag.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'b. `ReplaceAction`: This replaces the original action Clang was going to perform.
+    For example, if Clang was supposed to compile input code into an object file (the
+    `-c` flag), it will execute the plugin''s action instead once the plugin has been
+    loaded.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'c. `AddBefore/AfterMainAction`: The original Clang action will still be executed,
+    and the plugin action will be prepended/appended to it.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Here, we will use the `Cmdline` action type:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'struct TernaryConverterAction : public PluginASTAction {'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: …
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: bool NoReturn and NoAssignment, to carry our command-line options' values. An
+    important thing to know is the return value for ParseArgs. Instead of returning
+    *if it parsed any custom flag*, ParseArgs is actually returning *if the plugin
+    should continue its execution*. Therefore, you should always return true in most
+    cases.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Now, we are going to talk about the content of `CreateASTConsumer`. This function
+    will return an `ASTConsumer` object, which is the main body that we will put our
+    custom logic in. Nevertheless, we are not going to directly implement an `ASTConsumer`.
+    Instead, we are going to us the `ASTConsumer` object that was generated by *ASTMatcher*,
+    which we introduced earlier in this chapter.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Recall that two things are required to build a `MatchFinder` instance – the
+    primary pattern matching driver in ASTMatcher (patterns written in ASTMatcher''s
+    own DSL) and a `MatchCallback` implementation. Let''s separate our patterns and
+    matcher callbacks into two categories: patterns for detecting potential ternary
+    operator opportunities based on `return` statements and those for detecting *assignment-statement-based
+    opportunities*.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Here is the skeleton for `CreateASTConsumer`:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Let''s deal with the patterns first. The patterns we are looking for – both
+    return-based and assignment-based patterns – have `if`-`else` statements (`IfStmt`)
+    enclosed by a function (`FunctionDecl` for the entire function and `CompoundStmt`
+    for the function body) in their outermost layout. Inside both, in the true branch
+    and false branch of `IfStmt`, only one statement can exist. This structure can
+    be illustrated like so:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To convert this concept into ASTMatcher''s DSL, here is the DSL code that''s
+    shared between the return-based and assignment-based patterns:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: StatementMatcher
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: buildIfStmtMatcher(StatementMatcher truePattern,
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: StatementMatcher falsePattern) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return functionDecl(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: compoundStmt(hasAnySubstatement
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: IfStmt(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: hasThen(truePattern)
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: hasElse(falsePattern))));
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'For return-based patterns, the subpatterns for both the `if`-`else` branches
+    mentioned in the previous step are identical and simple. We''re also using a separate
+    function to create this pattern:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: StatementMatcher buildAssignmentMatcher() {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: return compoundStmt(statementCountIs(1),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: hasAnySubstatement(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: binaryOperator(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: hasOperatorName("="),
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: hasLHS(declRefExpr())
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: )));
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: Now that we've completed the skeleton for our patterns, it's time to implement
+    `MatchCallback`. There are two things we are going to do in `MatchCallback::run`.
+    First, for our assignment-based pattern, we need to check if the LHS' `DeclRefExpr`
+    of those matched assignment candidates is pointing to the same `Decl`. Second,
+    we want to print out messages that help users rewrite `if`-`else` branches as
+    ternary operators. In other words, we need location information from some of the
+    matched AST nodes.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'Let''s solve the first task using the *AST node binding technique*. The plan
+    is to bind the candidate assignment''s LHS `DeclRefExpr` nodes so that we can
+    retrieve them from `MatchCallback::run` later and perform further checks on their
+    `Decl` nodes. Let''s change `buildAssignmentMatch` into this:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'StatementMatcher buildAssignmentMatcher(StringRef buildAssignmentMatcher, we
+    will pass different suffixes for the different branches – either .true or .false.Finally,
+    we must retrieve the bound nodes in `MatchCallback::run`. Here, we are creating
+    different `MatchCallback` subclasses for return-based and assignment-based scenarios
+    – `MatchReturnCallback` and `MatchAssignmentCallback`, respectively. Here is a
+    part of the code in `MatchAssignmentCallback::run`:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: We are going to solve the second task – printing useful information to users
+    – in the next step.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To print useful information – including *which* part of the code can be converted
+    into a ternary operator, and *how* can you build that ternary operator – we need
+    to retrieve some AST nodes from the matched patterns before getting their source
+    location information. For this, we will use some node binding tricks, as we did
+    in the previous step. This time, we will modify all the pattern building functions;
+    that is, `buildIfStmtMatcher`, `buildReturnMatcher`, and `buildAssignmentMatcher`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'StatementMatcher buildReturnMatcher(StringRef MatchCallback::run and print
+    out the message using the SourceLocation information that''s attached to those
+    nodes.We are going to use Clang''s diagnostic framework to print out those messages
+    here (feel free to read the *Printing diagnostic messages* section again if you''re
+    not familiar with it). And since the prospective message formats are not existing
+    ones in Clang''s code base, we are going to create our own diagnostic ID via `DiagnosticsEngine::getCustomDiagID(…)`.
+    Here is what we will do in `MatchAssignmentCallback::run` (we will only demo `MatchAssignmentCallback`
+    here since `MatchReturnCallback` is similar):'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Combining this with bound node retrievals, here is how we are going to print
+    the messages:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE50]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, go back to `CreateASTConsumer`. Here is how everything is pieced together:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: And that wraps up all the things we need to do!
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Last but not least, this is the command for running our plugin:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: -plugin-arg-<plugin name> format.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: In this section, you learned how to write an AST plugin that sends messages
+    to users whenever there is an `if`-`else` statement that can be converted into
+    a ternary operator. You did this by leveraging all the techniques that were covered
+    in this chapter; that is, Clang AST's in-memory representation, ASTMatcher, and
+    the diagnostic framework, to name a few.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: When it comes to program analysis, AST is usually the recommended medium to
+    use, thanks to its rich amount of semantic information and high-level structures.
+    In this chapter, we learned about the powerful in-memory AST representation that's
+    used in Clang, including its C++ classes and APIs. This gives you a clear picture
+    of the source code you are analyzing.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Furthermore, we learned and practiced a concise way to do pattern matching on
+    AST – a crucial procedure for program analysis – via Clang's ASTMatcher. Familiarizing
+    yourself with this technique can greatly improve your efficiency when it comes
+    to filtering out interesting areas from the input source code. Last but not least,
+    we learned how to write an AST plugin that makes it easier for you to integrate
+    custom logic into the default Clang compilation pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will look at the **drivers** and **toolchains** in Clang.
+    We will show you how they work and how to customize them.
+  prefs: []
+  type: TYPE_NORMAL

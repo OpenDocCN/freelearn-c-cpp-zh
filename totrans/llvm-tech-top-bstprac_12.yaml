@@ -1,0 +1,865 @@
+- en: '*Chapter 9*: Working with PassManager and AnalysisManager'
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the previous section of this book, *Frontend Development*, we began with
+    an introduction to the internals of Clang, which is LLVM's official frontend for
+    the C family of programming languages. We went through various projects, involving
+    skills and knowledge, that can help you to deal with problems that are tightly
+    coupled with source code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this part of the book, we will be working with **LLVM IR** – a target-independent
+    **intermediate representation** (**IR**) for compiler optimization and code generation.
+    Compared to Clang's **Abstract Syntax Tree** (**AST**), LLVM IR provides a different
+    level of abstraction by encapsulating extra execution details to enable more powerful
+    program analyses and transformations. In addition to the design of LLVM IR, there
+    is a mature ecosystem around this IR format, which provides countless resources,
+    such as libraries, tools, and algorithm implementations. We will cover a variety
+    of topics in LLVM IR, including the most common LLVM Pass development, using and
+    writing program analysis, and the best practices and tips for working with LLVM
+    IR APIs. Additionally, we will review more advanced skills such as **Program Guided
+    Optimization** (**PGO**) and sanitizer development.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we are going to talk about writing a transformation **Pass**
+    and program analysis for the new **PassManager**. LLVM Pass is one of the most
+    fundamental, and crucial, concepts within the entire project. It allows developers
+    to encapsulate program processing logic into a modular unit that can be freely
+    composed with other Passes by the **PassManager**, depending on the situation.
+    In terms of the design of the Pass infrastructure, LLVM has actually gone through
+    an overhaul of both PassManager and AnalysisManager to improve their runtime performance
+    and optimization quality. The new PassManager uses a quite different interface
+    for its enclosing Passes. This new interface, however, is not backward-compatible
+    to the legacy one, meaning you cannot run legacy Passes in the new PassManager
+    and vice versa. What is worse, there aren't many learning resources online that
+    talk about this new interface, even though, now, they are enabled, by default,
+    in both LLVM and Clang. The content of this chapter will fill this gap and provide
+    you with an up-to-date guide to this crucial subsystem in LLVM.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will cover the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing an LLVM Pass for the new PassManager
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Working with the new AnalysisManager
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Learning instrumentations in the new PassManager
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: With the knowledge learned from this chapter, you should be able to write an
+    LLVM Pass, using the new Pass infrastructure, to transform or even optimize your
+    input code. You can also further improve the quality of your Pass by leveraging
+    the analysis data provided by LLVM's program analysis framework.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'In this chapter, we will, primarily, use a command-line utility, called `opt`,
+    to test our Passes. You can build it using a command like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The code example for this chapter can be found at [https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter09](https://github.com/PacktPublishing/LLVM-Techniques-Tips-and-Best-Practices-Clang-and-Middle-End-Libraries/tree/main/Chapter09).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing an LLVM Pass for the new PassManager
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'A **Pass in LLVM** is the basic unit that is required to perform certain actions
+    against LLVM IR. It is similar to a single production step in a factory, where
+    the products that need to be processed are LLVM IR and the factory workers are
+    the Passes. In the same way that a normal factory usually has multiple manufacturing
+    steps, LLVM also consists of multiple Passes that are executed in sequential order,
+    called the **Pass pipeline**. *Figure 9.1* shows an example of the Pass pipeline:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Figure 9.1 – An example of the LLVM Pass pipeline and its intermediate results'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '](img/Figure_9.1_B14590.jpg)'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Figure 9.1 – An example of the LLVM Pass pipeline and its intermediate results
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the preceding diagram, multiple Passes are arranged in a straight line. The
+    LLVM IR for the `foo` function is processed by one Pass after another. `foo` and
+    replaces an arithmetic multiplication (`mul`) by 2 with left shifting (`shl`)
+    by 1, which is considered easier than multiplication in most hardware architectures.
+    In addition, this figure also illustrates that the **code generation** steps are
+    modeled as Passes. Code generation in LLVM transforms LLVM IR, which is target
+    independent, into assembly code for certain hardware architecture (for example,
+    **x86_64** in *Figure 9.1*). Each detailed procedure, such as the register allocation,
+    instruction selection, or instruction scheduling, is encapsulated into a single
+    Pass and is executed in a certain order.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code generation Passes
+  prefs: []
+  type: TYPE_NORMAL
+- en: Passes for code generation have a different API than normal LLVM IR Passes.
+    Additionally, during the code generation phase, LLVM IR is actually converted
+    into another kind of IR, called **Machine IR** (**MIR**). However, in this chapter,
+    we will only be covering LLVM IR and its Passes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This Pass pipeline is conceptually managed by an infrastructure called **PassManager**.
+    PassManager owns the plan – their execution order, for example – to run these
+    Passes. Conventionally, we actually use the terms *Pass pipeline* and *PassManager*
+    interchangeably since they have nearly identical missions. In the *Learning instrumentations
+    in the new PassManager* section, we will go into more detail about the pipeline
+    itself and discuss how to customize the execution order of these enclosing Passes.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Code transformations in modern compilers can be complex. Because of this, multiple
+    transformation Passes might need the same set of program information, which is
+    called **analysis** in LLVM, in order to do their work. Furthermore, to achieve
+    maximum efficiency, LLVM also *caches* this analysis data so that it can be reused
+    if possible. However, since a transformation Pass might change the IR, some cached
+    analysis data, which was previously collected, might be outdated after running
+    that Pass. To solve these challenges, in addition to PassManager, LLVM has also
+    created **AnalysisManager** to manage everything related to program analysis.
+    We will go deeper into AnalysisManager in the *Working with the new AnalysisManager*
+    section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: As mentioned in the introduction of this chapter, LLVM has gone through a series
+    of overhauls on its Pass and PassManager (and AnalysisManager) infrastructure.
+    The new infrastructure runs faster and generates results with better quality.
+    Nevertheless, the new Pass differs in many places from the old one; we will briefly
+    explain these differences along the way. However, aside from that, we will only
+    be discussing the new Pass infrastructure, by default, for the rest of the chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we will show you how to develop a simple Pass for the new PassManager.
+    As usual, we will begin with a description of the sample project we are about
+    to use. Then, we will show you the steps to create a Pass that can be dynamically
+    loaded from a plugin into the Pass pipeline, which was mentioned earlier, using
+    the `opt` utility.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Project overview
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: In this section, the sample project we are using is called `noalias` attribute
+    to every function parameter that has a pointer type. Effectively, it adds a `restrict`
+    keyword to the function parameters in C code. First, let's explain what the `restrict`
+    keyword does.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The restrict keyword in C and C++
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `restrict` keyword was introduced in C99\. However, it doesn't have a counterpart
+    in C++. Nevertheless, mainstream compilers such as Clang, GCC, and MSVS all support
+    the same functionality in C++. For example, in Clang and GCC, you can use `__restrict__`
+    or `__restrict` in C++ code and it has the same effect as `restrict` in C.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `restrict` keyword can also be used alongside pointer type variables in
+    C. In the most common cases, it is used with pointer type function parameters.
+    The following is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Essentially, this additional attribute tells the compiler that argument `x`
+    will never point to the *same memory region* as argument `y`. In other words,
+    programmers can use this keyword to *persuade* the compilers that they will *never*
+    call the `foo` function, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The rationale behind this is that if the compiler knows that two pointers –
+    in this case, the two pointer arguments – will never point to the same memory
+    region, it can do more *aggressive* optimizations. To give you a more concrete
+    understanding of this, if you compare the assembly code of the `foo` function
+    with and without the `restrict` keyword, the latter version takes five instructions
+    to execute (on x86_64):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The version with the `restrict` keyword added only takes four instructions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although the difference here seems subtle, in the version without `restrict`,
+    the compiler needs to insert an extra memory load to assure that the last argument
+    `*y` (in the original C code) always reads the latest value. This extra cost might
+    gradually accumulate in a more complex code base and, eventually, create a performance
+    bottleneck.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now, you have learned how `restrict` works and its importance for ensuring
+    good performance. In LLVM IR, there is also a corresponding directive to model
+    the `restrict` keyword: the `noalias` attribute. This attribute is attached to
+    the pointer function parameters if hints such as `restrict` have been given by
+    programmers in the original source code. For example, the `foo` function (with
+    the `restrict` keywords) can be translated into the following LLVM IR:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Furthermore, we can also generate the LLVM IR code of the `foo` function *without*
+    `restrict` in C code, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, you will find that there is an extra memory load (as shown in the highlighted
+    instruction of the preceding snippet), which is similar to what happened to the
+    assembly examples from earlier. That is, LLVM is unable to perform more aggressive
+    optimization to remove that memory load since it's not sure whether those pointers
+    overlap each other.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In this section, we are going to write a Pass to add a `noalias` attribute
+    to every pointer argument of a function. The Pass will be built as a plugin, and
+    once it''s loaded into `opt`, users can use the `--passes` argument to explicitly
+    trigger `StrictOpt`, as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Alternatively, we can make `StrictOpt` run before other optimizations if the
+    optimization level is greater or equal to `-O3`. The following is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: We will show you how to switch between these two modes shortly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A demo-only Pass
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that `StrictOpt` is merely a demo-only Pass, and adding `noalias` to every
+    pointer function argument is absolutely *not* the thing you should do in real-world
+    use cases. This is because it might break the **correctness** of the target program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we will show you detailed steps of how to create this Pass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing the StrictOpt Pass
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'The following instructions will take you through the process of developing
+    the core Pass logic before covering how to register `StrictOpt` into the Pass
+    pipeline dynamically:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We only have two source files this time: `StrictOpt.h` and `StrictOpt.cpp`.
+    In the former file, we place the skeleton of the `StrictOpt` Pass:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'To implement the skeleton from the previous step, we are heading to `StrictOpt.cpp`.
+    In this file, first, we create the following method definition:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: The returned `PreservedAnalyses::all()` instance is just a placeholder that
+    will be removed later.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'Now, we are finally creating the code to add a `noalias` attribute to the pointer
+    function arguments. The logic is simple: for each `Argument` instance in a `Function`
+    class, attach `noalias` if it fulfills the criteria:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Certain analysis data might become outdated after a transformation Pass since
+    the latter might change the program''s IR. Therefore, when writing a Pass, we
+    need to return a `PreservedAnalyses` instance to show which analysis was affected
+    and should be subject to recalculation. While there are many analyses available
+    in LLVM, we don''t need to enumerate each of them. Instead, there are some handy
+    utility functions to create `PreservedAnalyses` instances, representing *all analyses*
+    or *none of the analyses*, such that we only need to subtract or add (un) affected
+    analysis from it. Here is what we do in `StrictOpt`:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'The core logic of `StrictOpt` is essentially finished. Now, we are going to
+    show you how to dynamically register the Pass into the pipeline. In `StrictOpt.cpp`,
+    we create a special global function, called `llvmGetPassPluginInfo`, with an outline
+    like this:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '$ opt registerPipelineParsingCallback method in PassBuilder:'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: '[PRE15]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Alternatively, we also want to trigger our `StrictOpt` at the beginning of
+    the Pass pipeline without using the textual pipeline description, as we described
+    in the *Project overview* section. This means that the Pass will be run before
+    other Passes after it is loaded into `opt` using the following command:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: …
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[](PassBuilder &PB) {'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: using OptimizationLevel
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: = typename PassBuilder::OptimizationLevel;
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: PB.registerPipelineStartEPCallback(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[](ModulePassManager &MPM, OptimizationLevel OL) {'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: if (OL.getSpeedupLevel() >= 2) {
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: MPM.addPass(
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: createModuleToFunctionPassAdaptor(StrictOpt()));
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '});'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '}'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'There are several things worth noting in the preceding snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `registerPipelineStartEPCallback` method we are using here registers a callback
+    that can customize certain places in the Pass pipeline, called **extension points**
+    (**EPs**). The EP we are going to customize here is one of the earliest points
+    in the pipeline.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In comparison to the lambda callback we saw in `registerPipelineParsingCallback`,
+    the lambda callback for `registerPipelineStartEPCallback` only provides `ModulePassManager`,
+    rather than `FunctionPassManager`, to insert our `StrictOpt` Pass, which is a
+    function Pass. We are using `ModuleToFunctionPassAdapter` to overcome this issue.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ModuleToFunctionPassAdapter` is a module Pass that can run a given function
+    Pass over a module''s enclosing functions. It is suitable for running a function
+    Pass in contexts where only `ModulePassManager` is available, such as in this
+    scenario. The `createModuleToFunctionPassAdaptor` function highlighted in the
+    preceding code is used to create a new `ModuleToFunctionPassAdapter` instance
+    from a specific function Pass.'
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: Finally, in this version, we are only enabling `StrictOpt` when the optimization
+    level is greater or equal to `-O2`. Therefore, we leverage the `OptimizationLevel`
+    argument passing into the lambda callback to determine whether we want to insert
+    `StrictOpt` into the pipeline or not.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: With these Pass registration steps, we have also learned how to trigger our
+    `StrictOpt` without explicitly specifying the textual Pass pipeline.
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: 'To summarize, in this section, we learned the essentials of the LLVM Pass and
+    Pass pipeline. Through the `StrictOpt` project, we have learned how to develop
+    a Pass – which is also encapsulated as a plugin – for the new PassManager and
+    how to dynamically register it against the Pass pipeline in `opt` in two different
+    ways: first, by triggering the Pass explicitly via a textual description, and
+    second, by running it at a certain time point (EP) in the pipeline. We also learned
+    how to invalidate analyses depending on the changes made in the Pass. These skills
+    can help you develop high-quality and modern LLVM Passes to process IR in a composable
+    fashion with maximum flexibility. In the next section, we will dive into the program
+    analysis infrastructure of LLVM. This greatly improves the capability of normal
+    LLVM transformation Passes.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Working with the new AnalysisManager
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Modern compiler optimizations can be complex. They usually require lots of information
+    from the target program in order to make correct decisions and optimal transformations.
+    For example, in the *Writing an LLVM Pass for the new PassManager* section, LLVM
+    used the `noalias` attribute to calculate memory aliasing information, which might
+    eventually be used to remove redundant memory loads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Some of this information – called **analysis**, in LLVM – is expensive to evaluate.
+    In addition, a single analysis might also depend on other analyses. Therefore,
+    LLVM creates an **AnalysisManager** component to handle all tasks related to program
+    analysis in LLVM. In this section, we are going to show you how to use AnalysisManager
+    in your own Passes for the sake of writing more powerful and sophisticated program
+    transformations or analyses. We will also use a sample project, **HaltAnalyzer**,
+    to drive our tutorial here. The next section will provide you with an overview
+    of HaltAnalyzer before moving on to the detailed development steps.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Overview of the project
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: HaltAnalyzer is set up in a scenario where target programs are using a special
+    function, `my_halt`, that terminates the program execution when it is called.
+    The `my_halt` function is similar to the `std::terminate` function, or the `assert`
+    function when its sanity check fails.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The job of HaltAnalyzer is to analyze the program to find basic blocks that
+    are *guaranteed to be unreachable* because of the `my_halt` function. To be more
+    specific, let''s take the following C code as an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: Because `my_halt` was called at the beginning of the true block for the `if
+    (x < 43)` statement, the code highlighted in the preceding snippet will never
+    be executed (that is, `my_halt` stopped all of the program executions before even
+    getting to those lines).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'HaltAnalyzer should identify these basic blocks and print out warning messages
+    to `stderr`. Just like the sample project from the previous section, HaltAnalyzer
+    is also a function Pass wrapped inside a plugin. Therefore, if we use the preceding
+    snippet as the input to our HaltAnalyzer Pass, it should print out the following
+    messages:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `%if.else` and `%if.then2` strings are just names for the basic blocks in
+    the `if (y > 45)` statement (you might see different names on your side). Another
+    thing worth noting is the `--disable-output` command-line flag. By default, the
+    `opt` utility will print out the binary form of LLVM IR (that is, the LLVM bitcode)
+    anyway unless users redirect the output to other places via the `-o` flag. Using
+    the aforementioned flag is merely to tell `opt` not to do that since we are not
+    interested in the final content of LLVM IR (because we are not going to modify
+    it) this time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Although the algorithm of HaltAnalyzer seems pretty simple, writing it from
+    scratch might be a pain. That''s why we are leveraging one of the analyses provided
+    by LLVM: the **Dominator Tree (DT)**. The concept of **Control Flow Graph** (**CFG**)
+    domination has been taught in most entry-level compiler classes, so we are not
+    going to explain it in depth here. Simply speaking, if we say a basic block *dominates*
+    another block, every execution flow that arrives at the latter is guaranteed to
+    go through the former first. A DT is one of the most important and commonly used
+    analyses in LLVM; most control flow-related transformations cannot live without
+    it.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Putting this idea into HaltAnalyzer, we are simply looking for all of the basic
+    blocks that are dominated by the basic blocks that contain a function call to
+    `my_halt` (we are excluding the basic blocks that contain the `my_halt` call sites
+    from the warning messages). In the next section, we will show you detailed instructions
+    on how to write HaltAnalyzer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Writing the HaltAnalyzer Pass
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In this project, we will only create a single source file, `HaltAnalyzer.cpp`.
+    Most of the infrastructure, including `CMakeListst.txt`, can be reused from the
+    `StrictOpt` project in the previous section:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Inside `HaltAnalyzer.cpp`, first, we create the following Pass skeleton:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Let''s implement `findHaltCalls` first:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Now, let''s go back to the `HaltAnalyzer::run` method. There are two things
+    we are going to do. We will collect the call sites to `my_halt` via `findHaltCalls`,
+    which we just wrote, and then retrieve the DT analysis data:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: // `FAM` is a FunctionAnalysisManager
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: typename T::Result &Data = FAM.getResult<T>(F);
+  prefs:
+  - PREF_IND
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'After we retrieve `DominatorTree`, it''s time to find all of the basic blocks
+    dominated by the `Instruction` call sites that we collected earlier:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: 'Finally, we need to dynamically insert our HaltAnalyzer Pass into the Pass
+    pipeline. We are using the same method that we did in the last section, by implementing
+    the `llvmGetPassPluginInfo` function and using `PassBuilder` to put our Pass at
+    one of the EPs in the pipeline:'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs:
+  - PREF_IND
+  type: TYPE_PRE
+- en: These are all the necessary steps to implement our HaltAnalyzer. Now you have
+    learned how to use LLVM's program analysis infrastructure to obtain more information
+    about the target program in an LLVM Pass. These skills can provide you with more
+    insight into IR when you are developing a Pass. In addition, this infrastructure
+    allows you to reuse high-quality, off-the-shelf program analysis algorithms from
+    LLVM instead of recreating the wheels by yourself. To browse all of the available
+    analyses provided by LLVM, the `llvm/include/llvm/Analysis` folder in the source
+    tree is a good starting point. Most of the header files within this folder are
+    standalone analysis data files that you can use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the final section of this chapter, we will show you some diagnosis techniques
+    that are useful for debugging an LLVM Pass.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Learning instrumentations in the new PassManager
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: PassManager and AnalysisManager in LLVM are complicated pieces of software.
+    They manage interactions between hundreds of Passes and analyses, and it can be
+    a challenge when we try to diagnose a problem caused by them. In addition, it's
+    really common for a compiler engineer to fix crashes in the compiler or **miscompilation**
+    bugs. In those scenarios, useful instrumentation tools that provide insights to
+    Passes and the Pass pipeline can greatly improve the productivity of fixing those
+    problems. Fortunately, LLVM has already provided many of those tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Miscompilation
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Miscompilation** bugs usually refer to logical issues in the **compiled program**,
+    which were introduced by compilers. For example, an overly aggressive compiler
+    optimization removes certain loops that shouldn''t be removed, causing the compiled
+    software to malfunction, or mistakenly reorder memory barriers and create *race
+    conditions* in the generated code.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will introduce a single tool at a time in each of the following sections.
+    Here is the list of them:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Printing Pass pipeline details
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Printing changes to the IR after each Pass
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Bisecting the Pass pipeline
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: These tools can interact purely in the command-line interface of `opt`. In fact,
+    you can also create *your own* instrumentation tools (without even changing the
+    LLVM source tree!); we will leave this as an exercise for you.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Printing Pass pipeline details
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: There are many different `-O1`, `-O2`, or `-Oz` flags we are familiar with when
+    using `clang` (or `opt`). Each optimization level is running a *different set
+    of Passes* and arranging them in *different orders*. In some cases, this might
+    greatly affect the generated code, in terms of performance or correctness. Therefore,
+    sometimes, it's crucial to know these configurations in order to gain a clear
+    understanding of the problems we are going to deal with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To print out all the Passes and the order they are currently running in inside
+    `opt`, we can use the `--debug-pass-manager` flag. For instance, given the following
+    C code, `test.c`, we will see the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We first generate the IR for it using the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: The -disable-O0-optnone flag
+  prefs: []
+  type: TYPE_NORMAL
+- en: By default, `clang` will attach a special attribute, `optnone`, to each function
+    under the `-O0` optimization level. This attribute will prevent any further optimization
+    on the attached functions. Here, the `-disable-O0-optnone` (frontend) flag is
+    preventing `clang` from attaching to this attribute.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then, we use the following command to print out all of the Passes running under
+    the optimization level of `-O2`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding command-line output tells us that `opt` first runs a set of *module-level*
+    optimizations; the ordering of those Passes (for example, `Annotation2MetadataPass`
+    and `ForceFunctionAttrsPass`) are also listed. After that, a sequence of *function-level*
+    optimizations is performed on the `bar` function (for example, `SROA`) before
+    running those optimizations on the `foo` function. Furthermore, it also shows
+    the analyses used in the pipeline (for example, `DominatorTreeAnalysis`), as well
+    as prompting us with a message regarding they became invalidated (by a certain
+    Pass).
+  prefs: []
+  type: TYPE_NORMAL
+- en: To sum up, `--debug-pass-manager` is a useful tool to peek into the Passes and
+    their ordering run by the Pass pipeline at a certain optimization level. Knowing
+    this information can give you a big picture of how Passes and analyses interact
+    with the input IR.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Printing changes to the IR after each Pass
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: To understand the effects of a particular transformation Pass on your target
+    program, one of the most straightforward ways is to compare the IR before and
+    after it is processed by that Pass. To be more specific, in most cases, we are
+    interested in the *changes* made by a particular transformation Pass. For instance,
+    if LLVM mistakenly removes a loop that it shouldn't do, we want to know *what*
+    Pass did that, and *when* the removal happened in the Pass pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'By using the `--print-changed` flag (and some other supported flags that we
+    will introduce shortly) with `opt`, we can print out the IR after each Pass if
+    it was ever modified by that Pass. Using the `test.c` (and its IR file, `test.ll`)
+    example code from the previous paragraph, we can use the following command to
+    print changes, if there are any, made by each Pass:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, we have only shown a small amount of output. However, in the highlighted
+    part of the snippet, we can see that this tool will first print out the original
+    IR (`IR Dump At Start`), then show the IR after it is processed by each Pass.
+    For example, the preceding snippet shows that the `bar` function has become much
+    shorter after the SROA Pass. If a Pass didn't modify the IR at all, it will omit
+    the IR dump to reduce the amount of noise.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Sometimes, we are only interested in the changes that have happened on a *particular
+    set of functions*, say, the `foo` function, in this case. Instead of printing
+    the *change log* of the entire module, we can add the `--filter-print-funcs=<function
+    names>` flag to only print IR changes for a subset of functions. For example,
+    to only print IR changes for the `foo` function, you can use the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Just like `--filter-print-funcs`, sometimes, we only want to see changes made
+    by a *particular set of Passes*, say, the SROA and `InstCombine` Passes. In that
+    case, we can add the `--filter-passes=<Pass names>` flag. For example, to view
+    only the content that is relevant to SROA and `InstCombine`, we can use the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now you have learned how to print the IR differences among all the Passes in
+    the pipeline, with additional filters that can further focus on a specific function
+    or Pass. In other words, this tool can help you to easily observe the *progression*
+    of changes throughout the Pass pipeline and quickly spot any traces that you might
+    be interested in. In the next section, we will learn how to debug problems raised
+    in the code optimization by *bisecting* the Pass pipeline.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Bisecting the Pass pipeline
+  prefs:
+  - PREF_H2
+  type: TYPE_NORMAL
+- en: 'In the previous section, we introduced the `--print-changed` flag, which prints
+    out the *IR change log* throughout the Pass pipeline. We also mentioned that it
+    is useful to call out changes that we are interested in; for instance, an invalid
+    code transformation that caused miscompilation bugs. Alternatively, we can also
+    `--opt-bisect-limit=<N>` flag in `opt` bisects the Pass pipeline by *disabling*
+    all Passes except the first `N` ones. The following command shows an example of
+    this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: (Note that this is different from examples shown in the previous sections; the
+    preceding command has printed both messages from `--opt-bisect-limit` and the
+    final textual IR.)
+  prefs: []
+  type: TYPE_NORMAL
+- en: Since we implemented the `--opt-bisect-limit=5` flag, the Pass pipeline only
+    ran the first five Passes. As you can see from the diagnostic messages, SROA was
+    applied on `bar` but not the `foo` function, leaving the final IR of `foo` less
+    optimal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: By changing the number that follows `--opt-bisect-limit`, we can adjust the
+    cut point until certain code changes appear or a certain bug is triggered (for
+    example, a crash). This is particularly useful as an *early filtering step* to
+    narrow down the original problem to a smaller range of Passes in the pipeline.
+    Furthermore, since it uses a numeric value as the parameter, this feature fits
+    perfectly to automating environments such as automatic crash reporting tools or
+    performance regression tracking tools.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this section, we introduced several useful instrumentation tools in `opt`
+    for debugging and diagnosing the Pass pipeline. These tools can greatly improve
+    your productivity when it comes to fixing problems, such as compiler crashes,
+    performance regressions (on the target program), and miscompilation bugs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we learned how to write an LLVM Pass for the new PassManager
+    and how to use program analysis data within a Pass via the AnalysisManager. We
+    also learned how to leverage various instrumentation tools to improve the development
+    experiences while working with the Pass pipeline. With the skills gained from
+    this chapter, you can now write a Pass to process LLVM IR, which can be used to
+    transform or even optimize a program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: These topics are some of the most fundamental and crucial skills to learn before
+    starting on any IR level transformation or analysis task. If you have been working
+    with the legacy PassManager, these skills can also help you to migrate your code
+    to the new PassManager system, which has now been enabled by default.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will show you various tips along with the best practices
+    that you should know when using the APIs of LLVM IR.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Questions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In the `StrictOpt` example of the *Writing an LLVM Pass for the new PassManager*
+    section, how can you write a Pass without deriving the `PassInfoMixin` class?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'How can you develop a custom instrumentation for the new PassManager? Additionally,
+    how can you do this without modifying the LLVM source tree? (Hint: think about
+    the Pass plugin that we learned about in this chapter.)'
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL

@@ -1,0 +1,1160 @@
+- en: Chapter 9.  Keeping Your Sanity with Multithreading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In previous chapters, we managed to always write code without ever relying on
+    threads. It is time to face the beast and truly understand how threading works
+    in Qt. In this chapter, you will develop a multithreaded application that displays
+    a Mandelbrot fractal. It is a heavy computational process that will bring tears
+    to your CPU cores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the example project, the user can see the Mandelbrot fractal, zoom in the
+    picture, and pan around to discover the magic of fractals.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The chapter covers the following topics:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Deep understanding of the `QThread` framework
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Overview of all the available threading technologies in Qt
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using a `QThreadPool` class to dispatch jobs and aggregate the results
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: How to synchronize threads and minimize sharing states
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Low-level drawing to optimize the performances
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Common threading pitfalls and challenges
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Discovering QThread
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Qt provides a sophisticated threading system. We assume you already know threading
+    basics and the associated issues (deadlocks, threads synchronization, resource
+    sharing, and so on) and we will focus on how Qt implements it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `QThread` is the central class of the Qt threading system. A `QThread` instance
+    manages one thread of execution within the program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can subclass `QThread` to override the `run()` function, which will be
+    executed in the `QThread` framework. Here is how you can create and start a `QThread`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `start()` function calling will automatically call the `run()` function
+    of the thread and emit the `started()` signal. Only at this point will the new
+    thread of execution be created. When `run()` is completed, the `thread` object
+    will emit the `finished()` signal.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This brings us to a fundamental aspect of `QThread`: it works seamlessly with
+    the signal/slot mechanism. Qt is an event-driven framework, where a main event
+    loop (or the GUI loop) processes events (user input, graphical, and so on) to
+    refresh the UI.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Each `QThread` comes with its own event loop that can process events outside
+    the main loop. If not overridden, `run()` calls the `QThread::exec()` function,
+    which starts the `thread` object''s event loop. You can also override `QThread`
+    and call yourself `exec()`, like so:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `started()`signal will be processed by the `Thread` event loop only upon
+    the `exec()` call. It will block and wait until `QThread::exit()` is called.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A crucial thing to note is that a thread event loop delivers events for all
+    `QObjects` that are living in that thread. This includes all objects created in
+    that thread or moved to that thread. This is referred to as the thread affinity
+    of an object. Let''s see an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this snippet, `myObject` is constructed in `Thread` class's constructor,
+    which is created in turn in `MainWindow`. At this point, `thread` is living in
+    the GUI thread. Hence, `myObject` is also living in the GUI thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: An object created before a `QCoreApplication` object has no thread affinity.
+    As a consequence, no event will be dispatched to it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is great to be able to handle signals and slots in our own `QThread`, but
+    how can we control signals across multiple threads? A classic example is a long-running
+    process that is executed in a separate thread that has to notify the UI to update
+    some state:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: Intuitively, we assume that the first `connect` sends the signal across multiple
+    threads (to have results available in `MainWindow::handleResult`), whereas the
+    second `connect` should work on thread's event loop only.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Fortunately, this is the case due to a default argument in the `connect()`
+    function signature: the connection type. Let''s see the complete signature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `type` keyword takes `Qt::AutoConnection` as a default value. Let''s review
+    the possible values of the `Qt::ConectionType enum` as the official Qt documentation
+    states:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`Qt::AutoConnection`: If the receiver lives in the thread that emits the signal, `Qt::DirectConnection`
+    is used. Otherwise, `Qt::QueuedConnection` is used. The connection type is determined
+    when the signal is emitted.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Qt::DirectConnection`: This slot is invoked immediately when the signal is
+    emitted. The slot is executed in the signaling thread.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Qt::QueuedConnection`: This slot is invoked when control returns to the event
+    loop of the receiver''s thread. The slot is executed in the receiver''s thread.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Qt::BlockingQueuedConnection`: This is the same as `Qt::QueuedConnection`,
+    except that the signaling thread blocks until the slot returns. This connection
+    must not be used if the receiver lives in the signaling thread, or else the application
+    will deadlock.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Qt::UniqueConnection`: This is a flag that can be combined with any one of
+    the previous connection types, using a bitwise OR. When `Qt::UniqueConnection`
+    is set, `QObject::connect()` will fail if the connection already exists (that
+    is, if the same signal is already connected to the same slot for the same pair
+    of objects).'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'When using `Qt::AutoConnection`, the final `ConnectionType` is resolved only
+    when the signal is effectively emitted. If you look again at our example, at the
+    first `connect()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: When `result()` is emitted, Qt will look at the `handleResult()` thread affinity,
+    which is different from the thread affinity of the `result()` signal. The `thread`
+    object is living in `MainWindow` (remember that it has been created in `MainWindow`),
+    but the `result()` signal has been emitted in the `run()` function, which is running
+    in a different thread of execution. As a result, a `Qt::QueuedConnection` slot
+    will be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can now take a look at the second `connect()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here, `deleteLater()` and `finished()` live in the same thread; therefore, a `Qt::DirectConnection`
+    slot will be used.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is crucial that you understand that Qt does not care about the emitting object
+    thread affinity, it looks only at the signal "context of execution".
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Loaded with this knowledge, we can take another look at our first `QThread`
+    class example to have a full understanding of this system:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: When the `Object::started()` function is emitted, a `Qt::QueuedConnection` slot
+    will be used. This is where your brain freezes. The `Thread::doWork()` function
+    lives in another thread than `Object::started()`, which has been created in `run()`.
+    If Thread has been instantiated in the UI thread, this is where `doWork()` would
+    have belonged.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This system is powerful, but complex. To make things simpler, Qt favors the
+    worker model. It splits the threading plumbing from the real processing. Here
+    is an example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We start by creating a `Worker` class that has:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A `doWork()` slot that will have the content of our old `QThread::run()`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A `result()` signal that will emit the resulting data
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Next in the `MainWindow` class, we create a simple `thread` object and an instance
+    of `Worker`. The `worker->moveToThread(thread)` is where the magic happens. It
+    changes the affinity of the `worker` object. The `worker` now lives in the `thread`
+    object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can only push an object from your current thread to another thread. Conversely,
+    you cannot pull an object that lives in another thread. You cannot change the
+    thread affinity of an object if the object does not live in your thread. Once
+    `thread->start()` is executed, we cannot call `worker->moveToThread(this)` unless
+    we are doing it from this new thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After that, we do three `connect()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: We handle the `worker` life cycle by reaping it when the thread is finished.
+    This signal will use a `Qt::DirectConnection`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We start the `Worker::doWork()` upon a possible UI event. This signal will use
+    a `Qt::QueuedConnection`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: We process the resulting data in the UI thread with `handleResult()`. This signal
+    will use a `Qt::QueuedConnection`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: To sum up, `QThread` can be either subclassed or used in conjunction with a `worker`
+    class. Generally, the worker approach is favored because it separates more cleanly
+    the threading affinity plumbing from the actual operation you want to execute
+    in parallel.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Flying over Qt multithreading technologies
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Built upon `QThread`, several threading technologies are available in Qt. First,
+    to synchronize threads, the usual approach is to use a mutual exclusion (mutex)
+    to have a mutual exclusion for a given resource. Qt provides it by means of the `QMutex`
+    class. Its usage is straightforward:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: From the `mutex.lock()` instruction, any other thread trying to lock the `mutex`
+    will wait until `mutex.unlock()` has been called.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The locking/unlocking mechanism is error-prone in complex code. You can easily
+    forget to unlock a mutex in a specific exit condition, causing a deadlock. To
+    simplify this situation, Qt provides a `QMutexLocker` that should be used where
+    the `QMutex` needs to be locked:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `mutex` is locked when the `locker` object is created and will be unlocked
+    when the `locker` object is destroyed; for example, when it goes out of scope.
+    This is the case for every condition we stated where the `return` statement appears.
+    It makes the code simpler and more readable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may need to create and destroy threads frequently, as managing `QThread`
+    instances by hand can become cumbersome. For this, you can use the `QThreadPool`
+    class, which manages a pool of reusable `QThreads`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To execute code within threads managed by a `QThreadPool` class, you will use
+    a pattern very close to the worker we covered earlier. The main difference is
+    that the processing class has to extend the `QRunnable` class. Here is how it
+    looks:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: Just override the `run()` function and ask `QThreadPool` to execute your job
+    in a separate thread. The `QThreadPool::globalInstance()` is a static helper function
+    that gives you access to an application global instance. You can create your own `QThreadPool`
+    if you need to have finer control over the `QThreadPool` life cycle.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Note that the `QThreadPool::start()` function takes the ownership of `job` and
+    will automatically delete it when `run()` finishes. Watch out, this does not change
+    the thread affinity like `QObject::moveToThread()` does with workers! A `QRunnable`
+    class cannot be reused, it has to be a freshly baked instance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you fire up several jobs, `QThreadPool` automatically allocates the ideal
+    number of threads based on the core count of your CPU. The maximum number of threads
+    that the `QThreadPool` class can start can be retrieved with `QThreadPool::maxThreadCount()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: If you need to manage threads by hand, but you want to base it on the number
+    of cores of your CPU, you can use the handy static function, `QThreadPool::idealThreadCount()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Another approach to multi-threaded development is available with the Qt Concurrent
+    framework. It is a higher-level API that avoids the use of mutexes/lock/wait conditions
+    and promotes the distribution of the processing among CPU cores.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Qt Concurrent relies on the `QFuture` class to execute a function and expects
+    a result later on:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `longRunningFunction()` function will be executed in a separated thread
+    obtained from the default `QThreadPool` class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To pass parameters to a `QFuture` class and retrieve the result of the operation,
+    use the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here we pass `lenna` as a parameter to the `processGrayscale()` function. Because
+    we want a `QImage` as a result, we declare the `QFuture` class with the template
+    type, `QImage`. After that, `future.result()` blocks the current thread and waits
+    for the operation to be completed to return the final `QImage`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To avoid blocking, `QFutureWatcher` comes to the rescue:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: We start by declaring a `QFutureWatcher` class with the template argument matching
+    the one used for `QFuture`. Then simply connect the `QFutureWatcher::finished`
+    signal to the slot you want to be called when the operation has been completed.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The last step is to tell the `watcher` object to watch the future object with `watcher.setFuture(future)`.
+    This statement looks almost like it comes from a science-fiction movie.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Qt Concurrent also provides a `MapReduce` and `FilterReduce` implementation.
+    The `MapReduce` is a programming model that basically does two things:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Maps or distributes the processing of the dataset among multiple cores of the
+    CPU
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Reduces or aggregates the results to provide it to the caller
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: This technique was first promoted by Google to be able to process huge datasets
+    within a cluster of CPUs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is an example of a simple map operation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: Instead of `QtConcurrent::run()`, we use the mapped function that takes a list
+    and the function to apply to each element in a different thread each time. The `images`
+    list is modified in place, so there is no need to declare `QFuture` with a template
+    type.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The operation can be made to block by using `QtConcurrent::blockingMapped()`
+    instead of `QtConcurrent::mapped()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, a `MapReduce` operation looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: Here we added a `combineImage()` function that will be called for each result
+    returned by the map function, `processGrayscale()`. It will merge the intermediate
+    data, `inputImage`, into the `finalImage`. This function is called only once at
+    a time per thread, so there is no need to use a mutex to lock the result variable.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `FilterReduce` follows exactly the same pattern; the filter function simply
+    allows you to filter the input list instead of transforming it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Architecting the Mandelbrot project
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The example project of this chapter is the multi-threaded calculation of a Mandelbrot
+    fractal. The user will see the fractal and will be able to pan and zoom in that
+    window.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Before diving into the code, we have to have a broad understanding of a fractal
+    and how we are going to achieve its calculation.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Mandelbrot fractal is a numerical set that works with complex numbers (a
+    + bi). Each pixel is associated with a value calculated through iterations. If
+    this iterated value diverges towards infinity then the pixel is out of the Mandelbrot
+    set. If not, then the pixel is inside the Mandelbrot set. A visual representation
+    of the Mandelbrot fractal looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Architecting the Mandelbrot project](img/image00428.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Every black pixel in this image tends to diverge to an infinite value, whereas
+    white pixels are bounded to a finite value. The white pixels belong to the Mandelbrot
+    set.
+  prefs: []
+  type: TYPE_NORMAL
+- en: What makes it interesting from a multi-threaded perspective, is that to determine
+    if the pixel belongs or not to the Mandelbrot set, we have to iterate on a formula
+    to be able to hypothesize its divergence or not. The more iterations we perform,
+    the safer we are in claiming "yes, this pixel is in the Mandelbrot set, it is
+    a white pixel".
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Even more fun, we can take any value in the graphical plot and always apply
+    the Mandelbrot formula to deduce if the pixel should be black or white. As a consequence,
+    you can zoom endlessly inside the graphics of your fractal. There are only two
+    main limitations:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The power of your CPU hinders the picture generation speed.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The floating number precision of your CPU architecture limits the zoom. If you
+    keep zooming, you will get visual artifacts because the scale factor can only
+    handle 15 to 17 significant digits.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The architecture of the application has to be carefully designed. Because we
+    are working with threads, it is very easy to cause deadlock, starve threads, or
+    even worse, freeze the UI.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We really want to maximize the use of the CPU. To do so, we will execute as
+    many threads as possible on each core. Each thread will be responsible for calculating
+    a part of the Mandelbrot set before giving back its result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The architecture of the application is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Architecting the Mandelbrot project](img/image00429.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The application is divided into three parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`MandelbrotWidget`: This requests a picture to display. It handles the drawing
+    and the user interaction. This object lives in the UI thread.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`MandelbrotCalculator`: This handles the picture requests and aggregates the
+    resulting `JobResults` before sending it back to `MandelbrotWidget`. This object
+    lives in its own thread.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`Job`: This calculates a part of the final picture before transmitting the
+    result back to `MandelbrotCalculator`. Each job lives in its own thread.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `MandelbrotCalculator` thread will use a `QThreadPool` class to dispatch
+    jobs in their own thread. This will scale perfectly according to your CPU cores.
+    Each job will calculate a single line of the final picture before sending it back
+    to `MandelbrotCalculator` through a `JobResult` object.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `MandelbrotCalculator` thread is really the orchestrator of the calculation.
+    Consider a user that zooms in the picture before the calculation is complete; `MandelbrotWidget`
+    will request a new picture to `MandelbrotCalculator`, which in turn has to cancel
+    all the current jobs before dispatching new jobs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will add a last constraint to this project: it has to be mutex free. Mutexes
+    are very convenient tools, but they force threads to wait for each other and are
+    error-prone. To do this, we will rely on multiple concepts and technologies provided
+    by Qt: multi-threaded signal/slots, implicit sharing, and so on.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: By minimizing the sharing state between our threads, we will be able to let
+    them execute as fast as they possibly can. That is why we are here, to burn some
+    CPU cores, right?
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that the broad picture is clearer, we can start the implementation. Create
+    a new **Qt Widget Application** project named `ch09-mandelbrot-threadpool`. Remember
+    to add the `CONFIG += c++14` to the `.pro` file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Defining a Job class with QRunnable
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Let's dive into the project's core. To speed up the Mandelbrot picture generation,
+    we will split the whole computation into multiple jobs. A `Job` is a request of
+    a task. Depending on your CPU architecture, several jobs will be executed simultaneously.
+    A `Job` class produces a `JobResult` function containing result values. In our
+    project, a `Job` class generates values for one line of the complete picture.
+    For example, an image resolution of 800 x 600 requires 600 jobs, each one generating
+    800 values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Please create a C++ header file called `JobResult.h`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This structure contains two parts:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Input data (`areaSize`, `pixelPositionY`, ...)
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Result `values` generated by a `Job` class
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We can now create the `Job` class itself. Create a C++ class `Job` using the
+    next snippet of `Job.h` for the content:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This `Job` class is a `QRunnable`, so we can override `run()` to implement
+    the Mandelbrot picture algorithm. As you can see, `Job` also inherits from `QObject`,
+    allowing us to use the signal/slot feature of Qt. The algorithm requires some
+    input data. Update your `Job.h` like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Let''s talk about these variables:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `mPixelPositionY` variable is the picture height index. Because each `Job`
+    generates data only for one picture line, we need this information.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mMoveOffset` variable is the Mandelbrot origin offset. The user can pan
+    the picture, so the origin will not always be (0, 0).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mScaleFactor` variable is the Mandelbrot scale value. The user can also
+    zoom into the picture.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mAreaSize` variable is the final picture size in a pixel.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mIterationMax` variable is the count of iterations allowed to determine
+    the Mandelbrot result for one pixel.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We can now add a signal, `jobCompleted()`, and the abort feature to `Job.h`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `jobCompleted()` signal will be emitted when the algorithm is over. The `jobResult`
+    parameter contains result values. The `abort()` slot will allow us to stop the
+    job updating the `mIsAbort` flag value. Notice that `mAbort` is not a classic `bool`,
+    but a `QAtomicInteger<bool>`. This Qt cross-platform type allows us to perform
+    atomic operations without interruption. You could use a mutex or another synchronization
+    mechanism to do the job, but using an atomic variable is a fast way to safely
+    update and access a variable from different threads.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is time to switch to the implementation part with `Job.cpp`. Here is the `Job`
+    class''s constructor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: This is a classic initialization; do not forget to call the `QObject` constructor.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can now implement the `run()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: In this first part, we initialize a `JobResult` variable. The width of the area
+    size is used to construct `JobResult::values` as a `QVector` with the correct
+    initial size. Other input data is copied from `Job` to `JobResult` to let the
+    receiver of `JobResult` get the result with the context input data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then we can update the `run()` function with the Mandelbrot algorithm:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The Mandelbrot algorithm itself is beyond the scope of this book. But you have
+    to understand the main purpose of this `run()` function. Let''s break it down:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The for loop iterates over all `x` positions of pixels over one line
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The pixel position is converted into complex plane coordinates
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the trial count exceeds the maximum authorized iteration, the algorithm ends
+    with `iteration` to the `mIterationMax` value
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: If the Mandelbrot check condition is true, the algorithm ends with `iteration
+    < mIterationMax`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: In any case, for each pixel, the iteration count is stored in `values` of `JobResult`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finally, the `jobCompleted()` signal is emitted with result values of this algorithm
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: We perform an atomic read with `mAbort.load()`; notice that if the return value
+    is `true`, the algorithm is aborted and nothing is emitted
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The last function is the `abort()` slot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: This method performs an atomic write of the value, `true`. The atomic mechanism
+    ensures that we can call `abort()` from multiple threads without disrupting the `mAbort`
+    read in the `run()` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In our case, `run()` lives in the thread affected by the `QThreadPool` (we will
+    cover it soon), while the `abort()` slot will be called in the `MandelbrotCalculator`
+    thread context.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You might want to secure the operations on `mAbort` with a `QMutex`. However,
+    keep in mind that locking and unlocking a mutex can become a costly operation
+    if you do it often. Using a `QAtomicInteger` class here presents only the advantages:
+    the access to `mAbort` is thread-safe and we avoid an expensive lock.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The end of the `Job` implementation only contains setter functions. Please refer
+    to the complete source code if you have any doubt.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using QThreadPool in MandelbrotCalculator
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Now that our `Job` class is ready to be used, we need to create a class to
+    manage the jobs. Please create a new class, `MandelbrotCalculator`. Let''s see
+    what we need in the file, `MandelbrotCalculator.h`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We have already discussed `mMoveOffset`, `mScaleFactor`, `mAreaSize`, and `mIterationMax`
+    in the previous section. We also have some new variables:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `mReceivedJobResults` variable is the count of the `JobResult` received,
+    which was sent by the jobs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mJobResults` variable is a list that contains received `JobResult`
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mTimer` variable calculates the elapsed time to run all jobs for a requested
+    picture
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Now that you get a better picture of all member variables, we can add the signals,
+    slots, and private methods. Update your `MandelbrotCalculator.h` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Here are the roles of these:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`generatePicture()`: This slot is used by the caller to request a new Mandelbrot
+    picture. This function prepares and starts jobs.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`process()`: This slot handles results generated by the jobs.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`pictureLinesGenerated()`: This signal is regularly triggered to dispatch results.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`abortAllJobs()`: This signal is used to abort all active jobs.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`createJob()`: This is a helper function to create and configure a new job.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`clearJobs()`: This slot removes queued jobs and aborts active jobs.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The header file is completed and we can now perform the implementation. Here
+    is the beginning of the `MandelbrotCalculator.cpp` implementation:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'As always, we are using the initializer list with default values for our member
+    variables. The role of `JOB_RESULT_THRESHOLD` will be covered soon. Here is the `generatePicture()`
+    slot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the `areaSize` dimension is 0x0, we have nothing to do. If the request is
+    valid, we can start `mTimer` to track the whole generation duration. Each new
+    picture generation will first cancel existing jobs by calling `clearJobs()`. Then
+    we set our member variables with the ones provided. Finally, we create a new `Job`
+    class for each vertical picture line. The `createJob()` function that returns
+    a `Job*` value will be covered soon.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `QThreadPool::globalInstance()` is a static function that gives us the optimal
+    global thread pool depending on the core count of our CPU. Even if we call `start()`
+    for all the `Job` classes, only the firsts starts immediately. Others are added
+    to the pool queue waiting for an available thread.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s see now how a `Job` class is created with the `createJob()` function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: As you can see, the jobs are allocated on the heap. This operation takes some
+    time in the `MandelbrotCalculator` thread. But the results are worth it; the overhead
+    is being compensated by the multi-threading system. Notice that when we call `QThreadPool::start()`,
+    the thread pool takes ownership of the `job`. As a consequence, it will be deleted
+    by the thread pool when `Job::run()` ends. We set the input data of the `Job`
+    class required by the Mandelbrot algorithm.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Then two connections are performed:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Emitting our `abortAllJobs()` signal will call the `abort()` slot of all jobs
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Our `process()` slot is executed each time a `Job` completes its task
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Finally, the `Job` pointer is returned to the caller, in our case, the `generatePicture()`
+    slot.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last helper function is `clearJobs()`. Add it to your `MandelbrotCalculator.cpp`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: The counter of received job results is reset. We emit our signal to abort all
+    active jobs. Finally, we remove queued jobs waiting for an available thread in
+    the thread pool.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The last function of this class is `process()`, and is maybe the most important
+    function. Update your code with the following snippet:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: This slot will be called each time a job completes its task. The first thing
+    to check is that the current `JobResult` is still valid with the current input
+    data. When a new picture is requested, we clear the jobs queue and abort the active
+    jobs. However, if an old `JobResult` is still sent to this `process()` slot, we
+    must ignore it.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After that, we can increment the `mReceivedJobResults` counter and append this `JobResult`
+    to our member queue, `mJobResults`. The calculator waits to get `JOB_RESULT_THRESHOLD`
+    (that is, 10) results before dispatching them by emitting the `pictureLinesGenerated()`
+    signal. You can try to tweak this value with caution:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: A lower value, for example 1, will dispatch each line of data to the widget
+    as soon as the calculator gets it. But the widget will be slower than the calculator
+    to handle each line. Moreover, you will flood the widget event loop.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: A higher value relieves the widget event loop. But the user will wait longer
+    before seeing something happening. A continuous partial frame update gives a better
+    user experience.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Also notice that when the event is dispatched, the `QList` class with the job
+    result is sent by copy. But Qt performs implicit sharing with `QList`, so we only
+    send a shallow copy not a costly deep copy. Then we clear the current `QList`
+    of the calculator.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, if the processed `JobResult` is the last one in the area, we display
+    a debug message with the elapsed time since the user call, `generatePicture()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Tip
+  prefs:
+  - PREF_H3
+  type: TYPE_NORMAL
+- en: '**Qt tip**'
+  prefs: []
+  type: TYPE_NORMAL
+- en: You can set the thread count used by the `QThreadPool` class with `setMaxThreadCount(x)`
+    where `x` is the thread count.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Displaying the fractal with MandelbrotWidget
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Here we are, the Mandelbrot algorithm is done and the multi-threading system
+    is ready to compute complex fractals over all your CPU cores. We can now create
+    the widget that will convert all `JobResult` to display a pretty picture. Create
+    a new C++ class called `MandelbrotWidget`. For this widget, we will handle the
+    painting ourselves. Thus, we do not need any `.ui``Qt Designer Form` file. Let''s
+    begin with the `MandelbrotWidget.h` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'You should recognize some known variable names such as `mScaleFactor`, `mMoveOffset`, `mAreaSize`,
+    or `mIterationMax`. We have already covered them in the `JobResult` and `Job`
+    implementation. Here are the real new ones:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `mMandelbrotCalculator` variable is our multi-threaded `Job` manager. The
+    widget will do requests to it and wait for results.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mThreadCalculator` variable allows the Mandelbrot calculator to run in
+    its own thread.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mLastMouseMovePosition` variable is used by the widget to handle user events
+    for the pan feature.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mImage` variable is the current picture displayed by the widget. It is
+    a `unique_ptr` pointer, so `MandelbrotWidget` is the owner of `mImage`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We can now add the functions. Update your code like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Before we dive into the implementation, let''s talk about these functions:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `processJobResults()` function will handle the `JobResult` list dispatched
+    by `MandelbrotCalculator`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `requestPicture()` signal is emitted each time the user changes the input
+    data (offset, scale, or area size).
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `paintEvent()` function draws the widget with the current `mImage`.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `resizeEvent()` function resizes the Mandelbrot area size when the user
+    resizes the window.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `wheelEvent()` function handles the user mouse wheel event to apply a scale
+    factor.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `mousePressEvent()` function and `mouseMoveEvent()` retrieve user mouse
+    events to move the Mandelbrot picture.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `generateColorFromIteration()` is a helper function to colorize the Mandelbrot
+    picture. The iteration value by pixel is converted into a color value.
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'We can now implement the `MandelbrotWidget` class. Here is the beginning of
+    the `MandelbrotWidget.cpp` file:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'At the top of the snippet, we set some constant default values. Feel free to
+    tweak these values if you want a different view when you start the application.
+    The first thing the constructor does is to change the thread affinity of the `mMandelbrotCalculator`
+    class. In this way, processing performed by the calculator (creating and starting
+    jobs, aggregating job results, and clearing jobs) does not disturb the UI thread.
+    Then we perform connections with the signal and slot of `MandelbrotCalculator`.
+    Because the widget and the calculator have a different thread affinity, the connection
+    will be automatically a `Qt::QueuedConnection` slot. Finally, we can start the
+    thread of `mThreadCalculator`. We can now add the destructor:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We need to request the calculator thread to quit. When the calculator thread
+    event loop handles our request, the thread will return a code 0\. We wait 1,000
+    ms for the thread to end. We can continue this implementation with all the cases
+    that request a new picture. Here is the `resizeEvent()` slot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We update `mAreaSize` with the new widget size. Then, a new black `QImage`
+    is created with the correct dimensions. Finally, we request a picture computation
+    to `MandelbrotCalculator`. Let''s see how the mouse wheel is handled:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The mouse wheel value can be retrieved from `QWheelEvent::delta()`. We use
+    a power function to apply a coherent value on `mScaleFactor` and we request an
+    updated picture. We can now implement the pan feature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The first function stores the mouse position where the user begins the move
+    gesture. Then the next function will use `mLastMouseMovePosition` to create an
+    offset:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The difference between the new and the old mouse position gives us the pan
+    offset. Notice that we invert a y-axis value because the mouse event is in a top-left
+    referential, whereas the Mandelbrot algorithm relies on a bottom-left referential.
+    Finally, we request a picture with updated input values. We covered all the user
+    events that emit a `requestPicture()` signal. Let''s see now how we handle `JobResult`
+    dispatched by `MandelbrotCalculator`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: The calculator sends us a `QList` of `JobResult`. For each one, we need to check
+    if the concerned area size is still valid. We directly update the pixel colors
+    of `mImage`. The `scanLine()` function returns a pointer on the pixel data. It
+    is a fast way to update a `QImage` pixel color. The `JobResult` function contains
+    the iteration count, and our helper function, `generateColorFromIteration()`,
+    returns a RGB value depending on the iteration value. A complete repaint of the
+    widget is not necessary, because we only update several lines of the `QImage`.
+    Thus, we repaint only the updated region.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here is how we convert an iteration value in an RGB value:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: Colorizing a Mandelbrot is an art on its own. We implement here a simple linear
+    interpolation on the blue channel. A nice Mandelbrot picture depends on the maximum
+    iteration per pixel and its color technique. Feel free to enhance it like you
+    want!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Here we are, the last but not least function, `paintEvent()`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We must override this function because we handle the widget drawing by ourselves.
+    The first thing to do is to draw the updated region of the image. The `QPaintEvent`
+    object contains the region that needs to be updated. The `QPainter` class makes
+    the drawing easy. Finally, we draw some information texts of the current input
+    data in white. You now have a complete overview of the progressive picture display
+    line by line. Let''s sum up the workflow of this feature:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Each `Job::run()` generates a `JobResult` object.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The `MandelbrotCalculator::process()` signal aggregates the `JobResult` object
+    and dispatches them by groups (by default, 10).
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The `MandelbrotWidget::processJobResults()` signal updates only concerned lines
+    of the picture and requests a partial repaint of the widget.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The `MandelbrotWidget::paintEvent()` signal only redraws the picture with the
+    new values.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'This feature causes a little overhead, but the user experience is smoother.
+    Indeed, the application reacts quickly to the user events: the first lines are
+    updated almost immediately. The user does not have to wait for the full picture
+    generation to see something happening.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The widget is ready; do not forget to add it to `MainWindow`. Promoting a custom
+    widget should be an easy task for you now. If you have any doubt, check [Chapter
+    4](part0040.xhtml#aid-164MG2 "Chapter 4.  Conquering the Desktop UI"), *Conquering
+    the Desktop UI*, or the complete source code of this chapter. You should now be
+    able to display and navigate into your multi-threaded Mandelbrot set!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If you start the application, you should see something like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Displaying the fractal with MandelbrotWidget](img/image00430.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'Try to zoom now and pan into the Mandelbrot set. You should find some funny
+    places like this one:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![Displaying the fractal with MandelbrotWidget](img/image00431.jpeg)'
+  prefs: []
+  type: TYPE_IMG
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: You discovered how a `QThread` class works and learned how to efficiently use
+    tools provided by Qt to create a powerful multi-threaded application. Your Mandelbrot
+    application is able to use all cores of your CPU to compute a picture quickly.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Creating a multi-threaded application presents a lot of pitfalls (deadlock,
+    event loop flood, orphan threads, overhead, and so on). The application architecture
+    is important. If you are able to isolate the heavy code that you want to parallelize,
+    everything should go well. Nevertheless, the user experience is of primary importance;
+    you will sometimes have to accept a little overhead if your application gives
+    the user a smoother feeling.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, we will see several ways to implement an IPC (Inter-Process
+    Communication) between applications. The project example will enhance your current
+    Mandelbrot application with a TCP/IP socket system. So the Mandelbrot generator
+    will compute pictures over several CPU cores from multiple computers!
+  prefs: []
+  type: TYPE_NORMAL

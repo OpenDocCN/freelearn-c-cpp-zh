@@ -1,0 +1,1579 @@
+- en: Hostname Resolution and DNS
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Hostname resolution is a vital part of network programming. It allows us to
+    use simple names, such as `www.example.com`, instead of tedious addresses such
+    as `::ffff:192.168.212.115`. The mechanism that allows us to resolve hostnames
+    into IP addresses and IP addresses into hostnames is the **Domain Name System**
+    (**DNS**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: In this chapter, we begin by covering the built-in `getaddrinfo()` and `getnameinfo()` socket
+    functions in more depth. Later, we will build a program that does DNS queries
+    using **User Datagram Protocol** (**UDP**) from scratch.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We will cover the following topics in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How DNS works
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Common DNS record types
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: The `getaddrinfo()` and `getnameinfo()` functions
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: DNS query data structures
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: DNS UDP protocol
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: DNS TCP fallback
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Implementing a DNS query program
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The example programs from this chapter can be compiled with any modern C compiler.
+    We recommend MinGW on Windows and GCC on Linux and macOS. See Appendices B, C,
+    and D for compiler setup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code for this book can be found at [https://github.com/codeplea/Hands-On-Network-Programming-with-C](https://github.com/codeplea/Hands-On-Network-Programming-with-C).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From the command line, you can download the code for this chapter with the
+    following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each example program in this chapter runs on Windows, Linux, and macOS. When
+    compiling on Windows, each example program should be linked with the Winsock library.
+    This can be accomplished by passing the `-lws2_32` option to `gcc`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We'll provide the exact commands needed to compile each example as they are
+    introduced.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All of the example programs in this chapter require the same header files and
+    C macros which we developed in [Chapter 2](4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml), *Getting
+    to Grips with Socket APIs.* For brevity, we put these statements in a separate
+    header file, `chap05.h`, which we can include in each program. For an explanation
+    of these statements, please refer to [Chapter 2](4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml),
+    *Getting to Grips with Socket APIs*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The contents of `chap05.h` are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: With the `chap05.h` header in place, writing portable network programs is much
+    easier. Let's continue now with an explanation of how DNS works, and then we will
+    move on to the actual example programs.
+  prefs: []
+  type: TYPE_NORMAL
+- en: How hostname resolution works
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The DNS is used to assign names to computers and systems connected to the internet.
+    Similar to how a phone book can be used to link a phone number to a name, the
+    DNS allows us to link a hostname to an IP address.
+  prefs: []
+  type: TYPE_NORMAL
+- en: When your program needs to connect to a remote computer, such as `www.example.com`,
+    it first needs to find the IP address for `www.example.com`. In this book so far,
+    we have been using the built-in `getaddrinfo()` function for this purpose. When
+    you call `getaddrinfo()`, your operating system goes through a number of steps
+    to resolve the domain name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: First, your operating system checks whether it already knows the IP address
+    for `www.example.com`. If you have used that hostname recently, the OS is allowed
+    to remember it in a local cache for a time. This time is referred to as **time-to-live**
+    (**TTL**) and is set by the DNS server responsible for the hostname.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the hostname is not found in the local cache, then your operating system
+    will need to query a DNS server. This DNS server is usually provided by your **Internet
+    Service Provider** (**ISP**), but there are also many publicly-available DNS servers.
+    When the DNS server receives a query, it also checks its local cache. This is
+    useful because numerous systems may be relying on one DNS server. If a DNS server
+    receives 1,000 requests for `gmail.com` in one minute, it only needs to resolve
+    the hostname the first time. For the other 999 requests, it can simply return
+    the memorized answer from its local cache.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the DNS server doesn''t have the requested DNS record in its cache, then
+    it needs to query other DNS servers until it connects directly to the DNS server
+    responsible for the target system. Here''s an example query resolution broken
+    down step-wise:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Client A''s DNS server is trying to resolve `www.example.com` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: It first connects to a root DNS server and asks for `www.example.com`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The root DNS server directs it to ask the `.com` server.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Our client's DNS server then connects to the server responsible for `.com` and
+    asks for `www.example.com`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The `.com` DNS server gives our server the address of another server – the `example.com` DNS
+    server.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Our DNS server finally connects to that server and asks about the record for
+    `www.example.com`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The `example.com` server then shares the address of `www.example.com`.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Our client's DNS server relays it back to our client.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The following diagram illustrates this visually:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/3885e0b3-c552-4775-926d-4cc361781b2a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'In this example, you can see that resolving `www.example.com` involved sending
+    eight messages. It''s possible that the lookup could have taken even longer. This
+    is why it''s imperative for DNS servers to implement caching. Let''s assume that
+    **Client B** tries the same query shortly after **Client A**; it''s likely that
+    the DNS server would have that value cached:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/ea2e3e19-987a-4c09-80af-f27720d6ad66.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Of course, if a program on **Client A** wants to resolve `www.example.com` again,
+    it's likely that it won't have to contact the DNS server at all – the operating
+    system running on **Client A** should have cached the result.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On Windows, you can show your local DNS cache with the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: On Linux or macOS, the command to show your local DNS varies depending on your
+    exact system setup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One downside of setting a large TTL value for a domain record is that you have
+    to wait at least that long to be sure that all clients are using the new record
+    and not just retrieving the old cached record.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In addition to DNS records that link a hostname to an IP address, there are
+    other DNS record types for various purposes. We'll review some of these in the
+    next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: DNS record types
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The DNS has five main types of records—`A`, `AAAA`, `MX`, `TXT`, `CNAME`, and
+    `*` (`ALL`/`ANY`).
+  prefs: []
+  type: TYPE_NORMAL
+- en: As we have learned, the DNS's primary purpose is to translate hostnames into
+    IP addresses. This is done with two record types – type `A` and type `AAAA`. These
+    records work in the same way, but `A` records return an IPv4 address, while `AAAA`
+    records return an IPv6 address.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `MX` record type is used to return mail server information. For example,
+    if you wanted to send an email to `larry@example.com`, then the `MX` record(s)
+    for `example.com` would indicate which mail server(s) receives emails for that
+    domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`TXT` records can be used to store arbitrary information for a hostname. In
+    practice, these are sometimes set to prove ownership of a domain name or to publish
+    email sending guidelines. The **Sender Policy Framework** (**SPF**) standard uses
+    `TXT` records to declare which systems are allowed to send mail for a given domain
+    name. You can read more about SPF at [http://www.openspf.org/](http://www.openspf.org/).'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`CNAME` records can be used to provide an alias for a given name. For example,
+    many websites are accessible at both their root domain name, for example, `example.com`,
+    and at the `www` subdomain. If `example.com` and `www.example.com` should point
+    to the same address, then an `A` and an `AAAA` record can be added for `example.com`,
+    while a `CNAME` record can be added for `www.example.com` pointing to `example.com`.
+    Note that DNS clients don''t query for `CNAME` records directly; instead, a client
+    would ask for the `A` or `AAAA` record for `www.example.com` and the DNS server
+    would reply with the `CNAME` record pointing to `example.com`. The DNS client
+    would then continue the query using `example.com`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: When doing a DNS query, there is also a pseudo-record type called `*` or `ALL`
+    or `ANY`. If this record is requested from a DNS server, then the DNS server returns
+    all known record types for the current query. Note that a DNS server is allowed
+    to respond with only the records in its cache, and this query is not guaranteed
+    (or even likely) to actually get all of the records for the requested domain.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'When sending a DNS query, each record type has an associated type ID. The IDs
+    for the records discussed so far are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '| **Record Type** | **Type ID (decimal)** | **Description** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `A` | 1 | IPv4 address record |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `AAAA` | 28 | IPv6 address record |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `MX` | 15 | Mail exchange record |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `TXT` | 16 | Text record |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `CNAME` | 5 | Canonical name |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `*` | 255 | All cached records |'
+  prefs: []
+  type: TYPE_TB
+- en: There are many other record types in use. Please see the *Further reading* section
+    at the end of this chapter for more information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It should be noted that one hostname may be associated with multiple records
+    of the same type. For example, `example.com` could have several `A` records, each
+    with a different IPv4 address. This is useful if multiple servers can provide
+    the same service.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One other aspect of the DNS protocol worth mentioning is security. Let's look
+    at that now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: DNS security
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: While most web traffic and email are encrypted today, DNS is still widely used
+    in an unsecured manner. Protocols do exist to provide security for DNS, but they
+    are not widely adopted yet. This will hopefully change in the near future.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Domain Name System Security Extensions** (**DNSSEC**) are DNS extensions
+    that provide data authentication. This authentication allows a DNS client to know
+    that a given DNS reply is authentic, but it does not protect against eavesdropping.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**DNS over HTTPS** (**DoH**) is a protocol that provides name resolution over
+    HTTPS. HTTPS provides strong security guarantees, including resistance to interception.
+    We cover HTTPS in [Chapter 9](47ba170d-42d9-4e38-b5d8-89503e005708.xhtml), *Loading
+    Secure Web Pages with HTTPS and OpenSSL*, and [Chapter 10](f57ffaa2-3eba-45cf-914b-bb6aef36174f.xhtml),
+    *Implementing a Secure Web Server*.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What are the implications of using insecure DNS? First, if DNS is not authenticated,
+    then it could allow an attacker to lie about a domain name's IP address. This
+    could trick a victim into connecting to a server that they think is `example.com`,
+    but, in reality, is a malicious server controlled by the attacker at a different
+    IP address. If the user is connecting via a secure protocol, such as HTTPS, then
+    this attack will fail. HTTPS provides additional authentication to prove server
+    identity. However, if the user connects with an insecure protocol, such as HTTP,
+    then the DNS attack could successfully trick the victim into connecting to the
+    wrong server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If DNS is authenticated, then these hijacking attacks are prevented. However,
+    without encryption, DNS queries are still susceptible to eavesdropping. This could
+    potentially give an eavesdropper insight into which websites you're visiting and
+    other servers that you are connecting to (for example, which email server you
+    use). This doesn't let an attacker know what you are doing on each website. For
+    example, if you do a DNS query for `example.com`, an attacker would know that
+    you planned to visit `example.com`, but the attacker would not be able to determine
+    which resources you requested from `example.com` – assuming that you use a secure
+    protocol (for example, HTTPS) to retrieve those resources. An attacker with the
+    ability to eavesdrop would be able to see that you established a connection to
+    the IP address of `example.com` in any case, so them knowing that you performed
+    a DNS lookup beforehand is not much extra information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With some security discussion out of the way, let's look at how to do actual
+    DNS lookups. Winsock and Berkeley sockets provide a simple function to do address
+    lookup, called `getaddrinfo()`, which we've used in the previous chapters of this
+    book. We will start with this in the next section.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Name/address translation functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It is common for networked programs to need to translate text-based representatives
+    of an address or hostname into an address structure required by the socket programming
+    API. The common function we've been using is `getaddrinfo()`. It is a useful function
+    because it is highly portable (available on Windows, Linux, and macOS), and it
+    works for both IPv4 and IPv6 addresses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is also common to need to convert a binary address back into a text format.
+    We use `getnameinfo()` for this.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using getaddrinfo()
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Although we've been using `getaddrinfo()` in previous chapters, we'll discuss
+    it in more detail here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The declaration for `getaddrinfo()` is shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding code snippet is explained as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`node` specifies a hostname or address as a string. Valid examples could be
+    `example.com`, `192.168.1.1`, or `::1`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`service` specifies a service or port number as a string. Valid examples could
+    be `http` or `80`. Alternately, the null pointer can be passed in for `service`,
+    in which case, the resulting address is set to port `0`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`hints` is a pointer to a `struct addrinfo`, which specifies options for selecting
+    the address. The `addrinfo` structure has the following fields:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: You should not assume that the fields are stored in the order listed in the
+    previous code, or that additional fields aren't present. There is some variation
+    between operating systems.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The call to `getaddrinfo()` looks at only four fields in `*hints`. The rest
+    of the structure should be zeroed-out. The relevant fields are `ai_family`, `ai_socktype`,
+    `ai_protocol`, and `ai_flags`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`ai_family` specifies the desired address family. It can be `AF_INET` for IPv4,
+    `AF_INET6` for IPv6, or `AF_UNSPEC` for any address family. `AF_UNSPEC` is defined
+    as `0`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ai_socktype` could be `SOCK_STREAM` for TCP (see [Chapter 3](eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml),
+    *An In-Depth Overview of TCP Connections*), or `SOCK_DGRAM` for UDP (see [Chapter
+    4](05a32725-5c72-41e4-92aa-2425bf75282e.xhtml), *Establishing UDP Connections*).
+    Setting `ai_socktype` to `0` indicates that the address could be used for either.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ai_protocol` should be left to `0`. Strictly speaking, TCP isn''t the only
+    streaming protocol supported by the socket interface, and UDP isn''t the only
+    datagram protocol supported. `ai_protocol` is used to disambiguate, but it''s
+    not needed for our purposes.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`ai_flags` specifies additional options about how `getaddrinfo()` should work.
+    Multiple flags can be used by bitwise OR-ing them together. In C, the bitwise
+    OR operator uses the pipe symbol, `|`. So, bitwise OR-ing two flags together would
+    use the `(flag_one | flag_two)` code.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'Common flags you may use for the `ai_flags` field are:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`AI_NUMERICHOST` can be used to prevent name lookups. In this case, `getaddrinfo()`
+    would expect `node` to be an address such as `127.0.0.1` and not a hostname such
+    as `example.com`. `AI_NUMERICHOST` can be useful because it prevents `getaddrinfo()`
+    from doing a DNS record lookup, which can be slow.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`AI_NUMERICSERV` can be used to only accept port numbers for the `service`
+    argument. If used, this flag causes `getaddrinof()` to reject service names.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`AI_ALL` can be used to request both an IPv4 and IPv6 address. The declaration
+    for `AI_ALL` seems to be missing on some Windows setups. It can be defined as
+    `0x0100` on those platforms.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`AI_ADDRCONFIG` forces `getaddrinfo()` to only return addresses that match
+    the family type of a configured interface on the local machine. For example, if
+    your machine is IPv4 only, then using `AI_ADDRCONFIG | AI_ALL` prevents IPv6 addresses
+    from being returned. It is usually a good idea to use this flag if you plan to
+    connect a socket to the address returned by `getaddrinfo()`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`AI_PASSIVE` can be used with `node = 0` to request the *wildcard address*.
+    This is the local address that accepts connections on any of the host''s network
+    addresses. It is used on servers with `bind()`. If `node` is not `0`, then `AI_PASSIVE`
+    has no effect. See [Chapter 3](eb2e080f-fad2-4e14-b4c1-9a6c124df77c.xhtml), *An
+    In-Depth Overview of TCP Connections* for example usage.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: All other fields in `hints` should be set to `0`. You can also pass in `0` for
+    the `hints` argument, but different operating systems implement different defaults
+    in that case.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The final parameter to `getaddrinfo()`, `res`, is a pointer to a pointer to `struct
+    addrinfo` and returns the address(es) found by `getaddrinfo()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the call to `getaddrinfo()` succeeds, then its return value is `0`. In this
+    case, you should call `freeaddrinfo()` on `*res` when you''ve finished using the
+    address. Here is an example of using `getaddrinfo()` to find the address(es) for
+    `example.com`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that we first zero out `hints` using a call to `memset()`. We then set
+    the `AI_ALL` flag, which specifies that we want both IPv4 and IPv6 addresses returned.
+    This even returns addresses that we don't have a network adapter for. If you only
+    want addresses that your machine can practically connect to, then use `AI_ALL
+    | AI_ADDRCONFIG` for the `ai_flags` field. We can leave the other fields of `hints`
+    as their defaults.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We then declare a pointer to hold the return address list: `struct addrinfo
+    *peer_address`.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the call to `getaddrinfo()` succeeds, then `peer_address` holds the first
+    address result. The next result, if any, is in `peer_address->ai_next`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We can loop through all the returned addresses with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'When we''ve finished using `peer_address`, we should free it with the following
+    code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: Now that we can convert a text address or name into an `addrinfo` structure,
+    it is useful to see how to convert the `addrinfo` structure back into a text format.
+    Let's look at that now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Using getnameinfo()
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: '`getnameinfo()` can be used to convert an `addrinfo` structure back into a
+    text format. It works with both IPv4 and IPv6\. It also, optionally, converts
+    a port number into a text format number or service name.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The declaration for `getnameinfo()` can be seen in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: The first two parameters are passed in from the `ai_addr` and `ai_addrlen` fields
+    of `struct addrinfo`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The next two parameters, `host` and `hostlen`, specify a character buffer and
+    buffer length to store the hostname or IP address text.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The following two parameters, `serv` and `servlen`, specify the buffer and length
+    to store the service name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If you don't need both the hostname and the service, you can optionally pass
+    in only one of either `host` or `serv`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Flags can be a bitwise OR combination of the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`NI_NAMEREQD` requires `getnameinfo()` to return a hostname and not an address.
+    By default, `getnameinfo()` tries to return a hostname but returns an address
+    if it can''t. `NI_NAMEREQD` will cause an error to be returned if the hostname
+    cannot be determined.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`NI_DGRAM` specifies that the service is UDP-based rather than TCP-based. This
+    is only important for ports that have different standard services for UDP versus
+    TCP. This flag is ignored if `NI_NUMERICSERV` is set.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`NI_NUMERICHOST` requests that `getnameinfo()` returns the IP address and not
+    a hostname.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`NI_NUMERICSERV` requests that `getnameinfo()` returns the port number and
+    not a service name.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'For example, we can use `getnameinfo()` as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, `getnameinfo()` attempts to perform a reverse DNS lookup.
+    This works like the DNS queries we've done in this chapter so far, but backward.
+    A DNS query asks w*hich IP address does this hostname point to?* A reverse DNS
+    query asks instead, w*hich* *hostname does this IP address point to?* Keep in
+    mind that this is not a one-to-one relationship. Many hostnames can point to one
+    IP address, but an IP address can store a DNS record for only one hostname. In
+    fact, reverse DNS records are not even set for many IP addresses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If `address` is a `struct addrinfo` with the address for `example.com` port
+    `80` (`http`), then the preceding code might print as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: If the code prints something different for you, it's probably working as intended.
+    It is dependent on which address is in `address` and how the reverse DNS is set
+    up for that IP address. Try it with a different address.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If, instead of the hostname, we would like the IP address, we can modify our
+    code to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'In the case of the previous code, it might print the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: Using `NI_NUMERICHOST` generally runs much faster too, as it doesn't require
+    `getnameinfo()` to send off any reverse DNS queries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Alternative functions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Two widely-available functions that replicate `getaddrinfo()` are `gethostbyname()`
+    and `getservbyname()`. The `gethostbyname()` function is obsolete and has been
+    removed from the newer POSIX standards. Furthermore, I recommend against using
+    these functions in new code, because they introduce an IPv4 dependency. It's very
+    possible to use `getaddrinfo()` in such a way that your program does not need
+    to be aware of IPv4 versus IPv6, but still supports both.
+  prefs: []
+  type: TYPE_NORMAL
+- en: IP lookup example program
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To demonstrate the `getaddrinfo()` and `getnameinfo()` functions, we will implement
+    a short program. This program takes a name or IP address for its only argument.
+    It then uses `getaddrinfo()` to resolve that name or that IP address into an address
+    structure, and the program prints that IP address using `getnameinfo()` for the
+    text conversion. If multiple addresses are associated with a name, it prints each
+    of them. It also indicates any errors.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To begin with, we need to include our required header for this chapter. We
+    also define `AI_ALL` for systems that are missing it. The code for this is as
+    follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then begin the `main()` function and check that the user passed in a
+    hostname to lookup. If the user doesn''t pass in a hostname, we print a helpful
+    reminder. The code for this is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We need the following code to initialize Winsock on Windows platforms:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then call `getaddrinfo()` to convert the hostname or address into a `struct
+    addrinfo`. The code for that is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: The previous code first prints the hostname or address that is passed in as
+    the first command-line argument. This argument is stored in `argv[1]`. We then
+    set `hints.ai_flags = AI_ALL` to specify that we want all available addresses
+    of any type, including both IPv4 and IPv6 addresses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`getaddrinfo()` is then called with `argv[1]`. We pass `0` in for the service
+    argument because we don''t care about the port number. We are only trying to resolve
+    an address. If `argv[1]` contains a name, such as `example.com`, then our operating
+    system performs a DNS query (assuming the hostname isn''t already in the local
+    cache). If `argv[1]` contains an address such as `192.168.1.1`, then `getaddrinfo()` simply
+    fills in the resulting `struct addrinfo` as needed.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the user passed in an invalid address or a hostname for which no record could
+    be found, then `getaddrinfo()` returns a non-zero value. In that case, our previous
+    code prints out the error.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Now that `peer_address` holds the desired address(es), we can use `getnameinfo()` to
+    convert them to text. The following code does that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: This code works by first storing `peer_address` in a new variable, `address`.
+    We then enter a loop. `address_buffer[]` is declared to store the text address,
+    and we call `getnameinfo()` to fill in that address. The last parameter to `getnameinfo()`,
+    `NI_NUMERICHOST`, indicates that we want it to put the IP address into `address_buffer`
+    and not a hostname. The address buffer can then simply be printed out with `printf()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If `getaddrinfo()` returned multiple addresses, then the next address is pointed
+    to by `address->ai_next`. We assign `address->ai_next` to `address` and loop if
+    it is non-zero. This is a simple example of walking through a linked list.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After we''ve printed our address, we should use `freeaddrinfo()` to free the
+    memory allocated by `getaddrinfo()`. We should also call the Winsock cleanup function
+    on Windows. We can do both with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes our `lookup` program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can compile and run `lookup.c` on Linux and macOS by using the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Compiling and running on Windows with MinGW is done in the following way:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following screenshot is an example of using `lookup` to print the IP addresses
+    for `example.com`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/6c0777cf-fe92-47b0-9b88-2c0f2737ef5e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Although `getaddrinfo()` makes performing DNS lookups easy, it is useful to
+    know what happens behind the scenes. We will now look at the DNS protocol in more
+    detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The DNS protocol
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'When a client wants to resolve a hostname into an IP address, it sends a DNS
+    query to a DNS server. This is typically done over UDP using port `53`. The DNS
+    server then performs the lookup, if possible, and returns an answer. The following
+    diagram illustrates this transaction:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/b1727003-67ae-41ac-86c5-afc0e8977d7a.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: If the query (or, more commonly, the answer) is too large to fit into one UDP
+    packet, then the query can be performed over TCP instead of UDP. In this case,
+    the size of the query is sent over TCP as a 16-bit value, and then the query itself
+    is sent. This is called **TCP fallback** or **DNS transport over TCP**. However,
+    UDP works for most cases, and UDP is how DNS is used the vast majority of the
+    time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It's also important to note that the client must know the IP address of at least
+    one DNS server. If the client doesn't know of any DNS servers, then it has a sort
+    of chicken-and-egg problem. DNS servers are usually provided by your ISP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The actual UDP data format is simple and follows the same basic format for both
+    the query and the answer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: DNS message format
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The following illustration describes the DNS message format:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/debc3c62-a462-47e0-af20-6d25f771e40d.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Every DNS message follows that format, although a query would leave the **Answer**,
+    **Authority**, and **Additional** sections blank. A DNS response commonly doesn't
+    use **Authority** or **Additional**. We won't concern ourselves with the **Authority**
+    or **Additional** sections, as they are not needed for typical DNS queries.
+  prefs: []
+  type: TYPE_NORMAL
+- en: DNS message header format
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The header is exactly 12 bytes long and is exactly the same for a DNS query
+    or DNS response. The **Header Format** is illustrated graphically in the following
+    diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/346de5c8-e0a1-4694-bee3-2ffd68761f09.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'As the preceding diagram illustrates, the DNS message header contains 13 fields—**ID**,
+    **QR**, **OPCODE**, **AA**, **TC**, **RD**, **RA**, **Z**, **RCODE**, **QDCOUNT**,
+    **ANCOUNT**, **NSCOUNT**, and **ARCOUNT**:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**ID** is any 16-bit value that is used to identify the DNS message. The client
+    is allowed to put any 16 bits into the DNS query, and the DNS server copies those
+    same 16 bits into the DNS response **ID**. This is useful to allow the client
+    to match up which response is in reply to which query, in cases where the client
+    is sending multiple queries.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**QR** is a 1-bit field. It is set to `0` to indicate a DNS query or `1` to
+    indicate a DNS response.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Opcode** is a 4-bit field, which specifies the type of query. `0` indicates
+    a standard query. `1` indicates a reverse query to resolve an IP address into
+    a name. `2` indicates a server status request. Other values (`3` through `15`)
+    are reserved.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**AA** indicates an authoritative answer.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**TC** indicates that the message was truncated. In this case, it should be
+    re-sent using TCP.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**RD** should be set if recursion is desired. We leave this bit set to indicate
+    that we want the DNS server to contact additional servers until it can complete
+    our request.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**RA** indicates in a response whether the DNS server supports recursion.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**Z** is unused and should be set to `0`.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**RCODE** is set in a DNS response to indicate the error condition. Its possible
+    values are as follows:'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '| **RCODE** | **Description** |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `0` | No error |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `1` | Format error |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `2` | Server failure |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `3` | Name error |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `4` | Not implemented |'
+  prefs: []
+  type: TYPE_TB
+- en: '| `5` | Refused |'
+  prefs: []
+  type: TYPE_TB
+- en: Please see **RFC 1035**: *DOMAIN NAMES – IMPLEMENTATION AND SPECIFICATION,*
+    in the *Further reading* section of this chapter for more information on the meaning
+    of these values.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**QDCOUNT**, **ANCOUNT**, **NSCOUNT**, and **ARCOUNT** indicate the number
+    of records in their corresponding sections. **QDCOUNT** indicates the number of
+    questions in a DNS query. It is interesting that **QDCOUNT** is a 16-bit value
+    capable of storing large numbers, and yet no real-world DNS server allows more
+    than one question per message. **ANCOUNT** indicates the number of answers, and
+    it is common for a DNS server to return multiple answers in one message.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Question format
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'The DNS **Question Format** consists of a name followed by two 16-bit values—`QTYPE`
+    and `QCLASS`. This **Question Format** is illustrated as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/d793dee6-5fa1-4bb2-947d-eae5221dd568.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: '**QTYPE** indicates the record type we are asking for, and **QCLASS** should
+    be set to `1` to indicate the internet.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The name field involves a special encoding. First, a hostname should be broken
+    up into its individual labels. For example, `www.example.com` would be broken
+    up into `www`, `example`, and `com`. Then, each label should be prepended with
+    1 byte, indicating the label length. Finally, the entire name ends with a 0 byte.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Visually, the name `www.example.com` is encoded as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/982010ad-4fe5-4e83-b2e5-37d2798aa631.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: If the **QTYPE** and **QCLASS** fields were appended to the preceding name example,
+    then it could make up an entire DNS question.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A DNS response is sometimes required to repeat the same name multiple times.
+    In this case, a DNS server may encode a pointer to an earlier name instead of
+    sending the same name multiple times. A pointer is indicated by a 16-bit value
+    with the two most significant bits set. The lower 14 bits indicate the pointer
+    value. This 14-bit value specifies the location of the name as an offset from
+    the beginning of the message. Having the two most significant bits reserved has
+    an additional side-effect of limiting labels to 63 characters. A longer name would
+    require setting both high bits in the label length specifier, but if both high
+    bits are set, it indicates a pointer and not a label length!
+  prefs: []
+  type: TYPE_NORMAL
+- en: The answer format is similar to the question format but with a few more fields.
+    Let's look at that next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Answer format
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The DNS answer format consists of the same three fields that questions have;
+    namely, a name followed by a 16-bit `TYPE` and a 16-bit `CLASS`. The answer format
+    then has a 32-bit `TTL` field. This field specifies how many seconds the answer
+    is allowed to be cached for. `TTL` is followed by a 16-bit length specifier, `RDLENGTH`,
+    followed by data. The data is `RDLENGTH` long, and the data's interpretation is
+    dependent upon the type specified by `TYPE`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Visually, the answer format is shown in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/d78755d4-2ce9-463f-9bc6-f7f5b8a48a5b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Keep in mind that most DNS servers use name pointers in their answer names.
+    This is because the DNS response will have already included the relevant name
+    in the question section. The answer can simply point back to that, rather than
+    encoding the entire name a second (or third) time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whenever sending binary data over the network, the issue of byte order becomes
+    relevant. Let's consider this now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Endianness
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The term **endianness** refers to the order in which individual bytes are stored
+    in memory or sent over a network.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Whenever we read a multi-byte number from a DNS message, we should be aware
+    that it's in big-endian format (or so-called network byte order). The computer
+    you're using likely uses little-endian format, although we are careful to write
+    our code in an endian-independent manner throughout this book. We accomplish this
+    by avoiding the conversion of multiple bytes directly to integers, and instead
+    we interpret bytes one at a time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: For example, consider a message with a single 8-bit value, such as `0x05`. We
+    know that the value of that message is `5`. Bytes are sent atomically over a network
+    link, so we also know that anyone receiving our message can unambiguously interpret
+    that message as `5`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The issue of endianness comes into play when we need more than one byte to store
+    our number. Imagine that we want to send the number `999`. This number is too
+    big to fit into 1 byte, so we have to break it up into 2 bytes—a 16-bit value.
+    Because `999 = (3 * 2⁸) + 231`, we know that the high-order byte stores `3` while
+    the low-order byte stores `231`. In hexadecimal, the number `999` is `0x03E7`.
+    The question is whether to send the high-order or the low-order byte over the
+    network first.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Network byte order, which is used by the DNS protocol, specifies that the high-order
+    byte is sent first. Therefore, the number `999` is sent over the network as a
+    `0x03` followed by `0xE7`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: See the *Further reading* section of this chapter for more information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Let's now look at encoding an entire DNS query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A simple DNS query
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: To perform a simple DNS query, we would put an arbitrary number into `ID`, set
+    the `RD` bit to `1`, and set `QDCOUNT` to `1`. We would then add a question after
+    the header. That data would be sent as a UDP packet to port `53` of a DNS server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A hand-constructed DNS for `example.com` in C is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: This data could be sent as is to a DNS server over port `53`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The DNS server, if successful, sends a UDP packet back as a response. This packet
+    has `ID` set to match our query. `QR` is set to indicate a response. `QDCOUNT` is
+    set to `1`, and our original question is included. `ANCOUNT` is some small positive
+    integer that indicates the number of answers included in the message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next section, we'll implement a program to send and receive DNS messages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A DNS query program
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We will now implement a utility to send DNS queries to a DNS server and receive
+    the DNS response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: This should not normally be needed in the field. It is, however, a good opportunity
+    to better understand the DNS protocol and to get experience of sending binary
+    UDP packets.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We begin with a function to print a name from a DNS message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Printing a DNS message name
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: DNS encodes names in a particular way. Normally, each label is indicated by
+    its length, followed by its text. A number of labels can be repeated, and then
+    the name is terminated with a single 0 byte.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If a length has its two highest bits set (that is, `0xc0`), then it and the
+    next byte should be interpreted as a pointer instead.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We must also be aware at all times that the DNS response from the DNS server
+    could be ill-formed or corrupted. We must try to write our program in such a way
+    that it won't crash if it receives a bad message. This is easier said than done.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The declaration for our name-printing function looks like this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: We take `msg` to be a pointer to the message's beginning, `p` to be a pointer
+    to the name to print, and `end` to be a pointer to one past the end of the message.
+    `end` is required so that we can check that we're not reading past the end of
+    the received message. `msg` is required for the same reason, but also so that
+    we can interpret name pointers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Inside the `print_name` function, our code checks that a proper name is even
+    possible. Because a name should consist of at least a length and some text, we
+    can return an error if `p` is already within two characters of the end. The code
+    for that check is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then check to see if `p` points to a name pointer. If it does, we interpret
+    the pointer and call `print_name` recursively to print the name that is pointed
+    to. The code for this is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that `0xC0` in binary is `0b11000000`. We use `(*p & 0xC0) == 0xC0` to
+    check for a name pointer. In that case, we take the lower 6 bits of `*p` and all
+    8 bits of `p[1]` to indicate the pointer. We know that `p[1]` is still within
+    the message because of our earlier check that `p` was at least 2 bytes from the
+    end. Knowing the name pointer, we can pass a new value of `p` to `print_name()`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the name is not a pointer, we simply print it one label at a time. The code
+    for printing the name is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, `*p` is read into `len` to store the length of the current
+    label. We are careful to check that reading `len + 1` bytes doesn't put us past
+    the end of the buffer. We can then print the next `len` characters to the console.
+    If the next byte isn't `0`, then the name is continued, and we should print a
+    dot to separate the labels. We call `print_name()` recursively to print the next
+    label of the name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the next byte is `0`, then that means the name is finished and we return.
+  prefs: []
+  type: TYPE_NORMAL
+- en: That concludes the `print_name()` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now we will devise a function that prints an entire DNS message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Printing a DNS message
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Using `print_name()` that we have just defined, we can now construct a function
+    to print an entire DNS message to the screen. DNS messages share the same format
+    for both the request and the response, so our function is able to print either.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The declaration for our function is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`print_dns_message()` takes a pointer to the start of the message, and an `int` data
+    type indicates the message''s length.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Inside `print_dns_message()`, we first check that the message is long enough
+    to be a valid DNS message. Recall that the DNS header is 12 bytes long. If a DNS
+    message is less than 12 bytes, we can easily reject it as an invalid message.
+    This also ensures that we can read at least the header without worrying about
+    reading past the end of the received data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for checking the DNS message length is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: We then copy the `message` pointer into a new variable, `msg`. We define `msg`
+    as an `unsigned char` pointer, which makes certain calculations easier to work
+    with.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you want to print out the entire raw DNS message, you can do that with the
+    following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: Be aware that running the preceding code will print out many lines. This can
+    be annoying, so I would recommend using it only if you are curious about seeing
+    the raw DNS message.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The message ID can be printed very easily. Recall that the message ID is simply
+    the first two bytes of the message. The following code prints it in a nice hexadecimal
+    format:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Next, we get the `QR` bit from the message header. This bit is the most significant
+    bit of `msg[2]`. We use the bitmask `0x80` to see whether it is set. If it is,
+    we know that the message is a response; otherwise, it''s a query. The following
+    code reads `QR` and prints a corresponding message:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The `OPCODE`, `AA`, `TC`, and `RD` fields are read in much the same way as
+    `QR`. The code for printing them is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Finally, we can read in `RCODE` for response-type messages. Since `RCODE` can
+    have several different values, we use a `switch` statement to print them. Here
+    is the code for that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The next four fields in the header are the question count, the answer count,
+    the name server count, and the additional count. We can read and print them in
+    the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes reading the DNS message header (the first 12 bytes).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Before reading the rest of the message, we define two new variables as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, the `p` variable is used to walk through the message.
+    We set the `end` variable to one past the end of the message. This is to help
+    us detect whether we're about to read past the end of the message – a situation
+    we certainly wish to avoid!
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We read and print each question in the DNS message with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: Although no real-world DNS server will accept a message with multiple questions,
+    the DNS RFC does clearly define the format to encode multiple questions. For that
+    reason, we make our code loop through each question using a `for` loop. First,
+    the `print_name()` function, which we defined earlier, is called to print the
+    question name. We then read in and print out the question type and class.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Printing the answer, authority, and additional sections is slightly more difficult
+    than the question section. These sections start the same way as the question section
+    – with a name, a type, and a class. The code for reading the name, type, and class
+    is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that, in the preceding code, we stored the class in a variable called `qclass`.
+    This is to be nice to our C++ friends, who are not allowed to use `class` as a
+    variable name.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We then expect to find a 16-bit TTL field, and a 16-bit data length field.
+    The TTL field tells us how many seconds we are allowed to cache an answer for.
+    The data length field tells us how many bytes of additional data are included
+    for the answer. We read TTL and the data length in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Before we can read in the data of the `rdlen` length, we should check that
+    we won''t read past the end of the message. The following code achieves that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then try to interpret the answer data. Each record type stores different
+    data. We need to write code to display each type. For our purposes, we limit this
+    to the `A`, `MX`, `AAAA`, `TXT`, and `CNAME` records. The code to print each type
+    is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then finish the loop. We check that all the data was read and print
+    a message if it wasn''t. If our program is correct, and if the DNS message is
+    properly formatted, we should have read all the data with nothing left over. The
+    following code checks this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE41]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes the `print_dns_message()` function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can now define our `main()` function to create the DNS query, send it to
+    a DNS server, and await a response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Sending the query
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'We start `main()` with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE42]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code checks that the user passed in a hostname and record type
+    to query. If they didn't, it prints a helpful message. It also checks that the
+    hostname isn't more than 255 characters long. Hostnames longer than that aren't
+    allowed by the DNS standard, and checking it now ensures that we don't need to
+    allocate too much memory.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We then try to interpret the record type requested by the user. We support
+    the following options – `a`, `aaaa`, `txt`, `mx`, and `any`. The code to read
+    in those types and store their corresponding DNS integer value is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE43]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Like all of our previous programs, we need to initialize Winsock. The code
+    for that is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE44]'
+  prefs: []
+  type: TYPE_PRE
+- en: Our program connects to `8.8.8.8`, which is a public DNS server run by Google.
+    Refer to [Chapter 1](e3e07fa7-ff23-4871-b897-c0d4551e6422.xhtml),  *An Introduction
+    to Networks and Protocols*, *Domain Names*, for a list of additional public DNS
+    servers you can use.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Recall that we are connecting on UDP port `53`. We use `getaddrinfo()` to set
+    up the required structures for our socket with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE45]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We then create our socket using the data returned from `getaddrinfo()`. The
+    following code does that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE46]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our program then constructs the data for the DNS query message. The first 12
+    bytes compose the header and are known at compile time. We can store them with
+    the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE47]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code sets our query's ID to `0xABCD`, sets a recursion request,
+    and indicates that we are attaching `1` question. As mentioned earlier, `1` is
+    the only number of questions supported by real-world DNS servers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We then need to encode the user''s desired hostname into the query. The following
+    code does that:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE48]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code first sets a new pointer, `p`, to the end of the query header.
+    We will be adding to the query starting at `p`. We also define a pointer, `h`,
+    which we use to loop through the hostname.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can loop while `*h != 0` because `*h` is equal to zero when we've finished
+    reading the hostname. Inside the loop, we use the `len` variable to store the
+    position of the label beginning. The value in this position needs to be set to
+    indicate the length of the upcoming label. We then copy characters from `*h` to
+    `*p` until we find a dot or the end of the hostname. If either is found, the code
+    sets `*len` equal to the label length. The code then loops into the next label.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, outside the loop, we add a terminating 0 byte to finish the name section
+    of the question.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We then add the question type and question class to the query with the following
+    code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE49]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can then calculate the query size by comparing `p` to the query beginning.
+    The code for figuring the total query size is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE50]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Now, with the query message formed, and its length known, we can use `sendto()`
+    to transmit the DNS query to the DNS server. The code for sending the query is
+    as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE51]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'For debugging purposes, we can also display the query we sent with the following
+    code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE52]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code is useful to see whether we've made any mistakes in encoding
+    our query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that the query has been sent, we await a DNS response message using `recvfrom()`.
+    In a practical program, you may want to use `select()` here to time out. It could
+    also be wise to listen for additional messages in the case that an invalid message
+    is received first.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code to receive and display the DNS response is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE53]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We can finish our program by freeing the address(es) from `getaddrinfo()` and
+    cleaning up Winsock. The code to complete the `main()` function is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE54]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes the `dns_query` program.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can compile and run `dns_query.c` on Linux and macOS by running the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE55]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Compiling and running on Windows with MinGW is done by using the following
+    command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE56]'
+  prefs: []
+  type: TYPE_PRE
+- en: Try running `dns_query` with different domain names and different record types.
+    In particular, try it with `mx` and `txt` records. If you're brave, try running
+    it with the `any` record type. You may find the results interesting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following screenshot is an example of using `dns_query` to query the `A`
+    record of `example.com`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/969470fe-66c2-45b8-bc85-cfc29b63d33b.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'The next screenshot shows `dns_query` querying the `mx` record of `gmail.com`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/fc7393f1-2aa1-42c4-877a-2f78463f726e.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Note that UDP is not always reliable. If our DNS query is lost in transit, then
+    `dns_query` hangs while waiting forever for a reply that never comes. This could
+    be fixed by using the `select()` function to time out and retry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: This chapter was all about hostnames and DNS queries. We covered how the DNS
+    works, and we learned that resolving a hostname can involve many UDP packets being
+    sent over the network.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We looked at `getaddrinfo()` in more depth and showed why it is usually the
+    preferred way to do a hostname lookup. We also looked at its sister function,
+    `getnameinfo()`, which is capable of converting an address to text or even doing
+    a reverse DNS query.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we implemented a program that sent DNS queries from scratch. This program
+    was a good learning experience to better understand the DNS protocol, and it gave
+    us a chance to gain experience in implementing a binary protocol. When implementing
+    a binary protocol, we had to pay special attention to byte order. For the simple
+    DNS message format, this was achieved by carefully interpreting bytes one at a
+    time.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we've worked with a binary protocol, DNS, we will move on to text-based
+    protocols in the next few chapters. In the next chapter, we will learn about HTTP,
+    the protocol used to request and retrieve web pages.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Questions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Try these questions to test your knowledge of this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Which function fills in an address needed for socket programming in a portable
+    and protocol-independent way?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Which socket programming function can be used to convert an IP address back
+    into a name?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: A DNS query converts a name into an address, and a reverse DNS query converts
+    an address back into a name. If you run a DNS query on a name, and then a reverse
+    DNS query on the resulting address, do you always get back the name you started
+    with?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What are the DNS record types used to return IPv4 and IPv6 addresses for a name?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Which DNS record type stores special information about email servers?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Does `getaddrinfo()` always return immediately? or can it block?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: What happens when a DNS response is too large to fit into a single UDP packet?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The answers are in [Appendix A](bd8b8f52-52cb-4d34-b01b-e907564bfece.xhtml),
+    *Answers to Questions*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'For more information about DNS, please refer to:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**RFC 1034**: *DOMAIN NAMES – CONCEPTS AND FACILITIES* *(*[https://tools.ietf.org/html/rfc1034](https://tools.ietf.org/html/rfc1034))'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**RFC 1035**: *DOMAIN NAMES – IMPLEMENTATION AND SPECIFICATION* *(*[https://tools.ietf.org/html/rfc1035](https://tools.ietf.org/html/rfc1035))'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**RFC 3596**: *DNS Extensions to Support IP Version 6 (*[https://tools.ietf.org/html/rfc3596](https://tools.ietf.org/html/rfc3596))'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL

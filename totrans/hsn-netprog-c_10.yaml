@@ -1,0 +1,1087 @@
+- en: Making Your Program Send Email
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we will consider the protocol responsible for delivering email
+    on the internet. This protocol is called the **Simple Mail Transfer Protocol**
+    (**SMTP**).
+  prefs: []
+  type: TYPE_NORMAL
+- en: Following an exposition of the inner workings of email transfer, we will build
+    a simple SMTP client capable of sending short emails.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following topics are covered in this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: How SMTP servers work
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Determining which mail server is responsible for a given domain
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Using SMTP
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Email encoding
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Spam-blocking and email-sending pitfalls
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: SPF, DKIM, and DMARC
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Technical requirements
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The example programs from this chapter can be compiled with any modern C compiler.
+    We recommend MinGW on Windows and GCC on Linux and macOS. See [Appendix B](47da8507-709b-44a6-9399-b18ce6afd8c9.xhtml),
+    *Setting Up Your C Compiler on Windows*, [Appendix C](221eebc0-0bb1-4661-a5aa-eafed9fcba7e.xhtml),
+    *Setting Up Your C Compiler on Linux*, and [Appendix D](632db68e-0911-4238-a2be-bd1aa5296120.xhtml),
+    *Setting Up Your C Compiler on macOS*, for compiler setup.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The code for this book can be found at [https://github.com/codeplea/Hands-On-Network-Programming-with-C](https://github.com/codeplea/Hands-On-Network-Programming-with-C).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'From the command line, you can download the code for this chapter with the
+    following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE0]'
+  prefs: []
+  type: TYPE_PRE
+- en: Each example program in this chapter runs on Windows, Linux, and macOS. When
+    compiling on Windows, each example program requires linking with the Winsock library.
+    This can be accomplished by passing the `-lws2_32` option to `gcc`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We provide the exact commands needed to compile each example as they are introduced.
+  prefs: []
+  type: TYPE_NORMAL
+- en: All of the example programs in this chapter require the same header files and
+    C macros that we developed in [Chapter 2](4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml),
+    *Getting to Grips with Socket APIs*. For brevity, we put these statements in a
+    separate header file, `chap08.h`, which we can include in each program. For a
+    detailed explanation of these statements, please refer to [Chapter 2](https://cdp.packtpub.com/hands_on_network_programming_with_c/wp-admin/post.php?post=31&action=edit#post_25), *Getting
+    to Grips with Socket APIs*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The first part of `chap08.h` includes the needed networking headers for each
+    platform. The code for this is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE1]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also define some macros to make writing portable code easier, and we''ll
+    include the additional headers that our programs require:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE2]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes `chap08.h`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Email servers
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: SMTP is the protocol responsible for delivering emails between servers. It is
+    a text-based protocol operating on TCP port `25`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Not all emails need to be delivered between systems. For example, imagine you
+    have a Gmail account. If you compose and send an email to your friend who also
+    has a Gmail account, then SMTP is not necessarily used. In this case, Gmail only
+    needs to copy your email into their inbox (or do equivalent database updates).
+  prefs: []
+  type: TYPE_NORMAL
+- en: On the other hand, consider a case where you send an email to your friend's
+    Yahoo! account. If the email is sent from your Gmail account, then it's clear
+    that the Gmail and Yahoo! servers must communicate. In that case, your email is
+    transmitted from the Gmail server to the Yahoo! server using SMTP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'This connection is illustrated in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/cc2d0147-cd00-430a-889b-01c9c8ab33eb.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: Retrieving your email from your mail service provider is a different issue than
+    delivering email between service providers. Webmail is very popular now for sending
+    and receiving mail from your mail provider. Webmail providers allow mailbox access
+    through a web browser. Web browsers communicate using HTTP (or HTTPS).
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Let''s consider the full path of an email from **Alice** to **Bob**. In this
+    example, Alice has **Gmail** as her mail provider, and Bob has **Yahoo!** as his
+    mail provider. Both Alice and Bob access their mailbox using a standard web browser.
+    The path an email takes from Bob to Alice is illustrated by the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/fc5f08f6-9756-47cd-9963-4871398ede99.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: As you can see in the preceding diagram, **SMTP** is only used when delivering
+    the mail between mail providers. This usage of SMTP is called **mail transmission**.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In fact, the email in this example could take other paths. Let''s consider
+    that Alice uses a desktop email client instead of webmail. Gmail still supports
+    desktop email clients, and these clients offer many good features, even if they
+    are falling out of fashion. A typical desktop client connects to a mail provider
+    using either: **Internet Message Access Protocol** (**IMAP**) or **Post Office
+    Protocol** (**POP**) and SMTP. In this case, SMTP is used by Alice to deliver
+    her mail to her mail provider (Gmail). This usage of SMTP is called **mail submission**.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The Gmail provider then uses SMTP again to deliver the email to the **Yahoo!**
+    mail server. This is illustrated in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/f654b33e-4fdf-4fdc-afb2-6f523c1bb1e9.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: In the preceding diagram, the Gmail server would be considered an **SMTP relay**.
+    In general, an SMTP server should only relay mail for trusted users. If an SMTP
+    server relayed all mail, it would become quickly overwhelmed by spammers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Many mail providers have a set of mail servers used to accept incoming mail
+    and a separate set of mail servers used to accept outgoing mail from their users.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is important to understand that SMTP is used to send mail. SMTP is not used
+    to retrieve mail from a server. IMAP and POP are the common protocols used by
+    desktop mail programs to retrieve mail from a server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is not necessary for Alice to send her mail through her provider''s SMTP
+    server. Instead, she could send it directly to Bob''s mail provider as illustrated
+    in the following diagram:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/5dd6d1fb-1504-416b-91d0-7f29d8d9da93.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: In practice, one usually delegates the delivery responsibility to their mail
+    provider. This has several advantages; namely, the mail provider can attempt a
+    redelivery if the destination mail server isn't available. Other advantages are
+    discussed later in this chapter.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The program we develop in this chapter is used to deliver mail directly to the
+    recipient's email provider. It is not useful to deliver mail to a relay server
+    because we are not going to implement authentication techniques. Generally, SMTP
+    servers do not relay mail without authenticating that the sender has an account
+    with them.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The SMTP protocol we describe in this chapter is unsecured and not encrypted.
+    This is convenient for explanation and learning purposes, but in the real world,
+    you may want to secure your email transfer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SMTP security
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: We describe unsecured SMTP in this chapter. In real-world use, SMTP should be
+    secured if both communicating servers support it. Not all do.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Securing SMTP is done by having SMTP connections start out as plaintext on port `25`.
+    The SMTP client then issues a `STARTTLS` command to upgrade to a secure, encrypted
+    connection. This secure connection works by merely running the SMTP commands through
+    a TLS layer; therefore, everything we cover in this chapter is applicable to secure
+    SMTP too. See [Chapter 9](47ba170d-42d9-4e38-b5d8-89503e005708.xhtml), *Loading **Secure
+    Web Pages with HTTPS and OpenSSL,* for more information about TLS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Mail transmission between servers is always done on port `25`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Many desktop email clients use TCP ports `465` or `587` for SMTP mail submission.
+    **Internet Service Providers (ISPs)** prefer these alternative ports for mail
+    submission, and it allows them to block port `25` altogether. This is generally
+    justified as a spam prevention technique.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Next, let's see how to determine which mail server receives mail for a given
+    email address.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finding an email server
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: Consider the email address `bob@example.com`. In this case, `bob` identifies
+    the user, while `example.com` identifies the domain name of the service provider.
+    These parts are delineated by the `@` symbol.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One domain name can potentially use multiple mail servers. Likewise, one mail
+    server can provide service for many domain names. For this reason, identifying
+    the mail server or servers responsible for receiving mail for `bob@example.com` isn't
+    as easy as connecting to `example.com`. Instead, the mail server must be identified
+    by performing a DNS lookup for an MX record.
+  prefs: []
+  type: TYPE_NORMAL
+- en: DNS was covered in depth back in [Chapter 5](3d80e3b8-07d3-49f4-b60f-b006a17f7213.xhtml), *Hostname
+    Resolution and DNS*. The program we developed in that chapter can be used to query
+    MX records.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Otherwise, most operating systems provide a command-line tool for DNS lookup.
+    Windows provides `nslookup`, while Linux and macOS provide `dig`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'On Windows, we can find the mail servers responsible for accepting mail `@gmail.com` using
+    the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE3]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'This lookup is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/6f4e6420-bf5b-491a-9c56-2a09ec4f19d7.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'On Linux or macOS, an MX record lookup for a `@gmail.com` account is done with
+    the following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE4]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The use of `dig` is shown in the following screenshot:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/cc1f9572-2088-4dbf-87a6-cf0a0750a8c0.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: As you can see in the preceding two screenshots, Gmail uses five mail servers.
+    When multiple MX records are found, mail should be delivered to the server having
+    the lowest MX preference first. If mail delivery fails to that server, then an
+    attempt should be made to deliver to the server having the next lowest preference,
+    and so on. At the time of this writing, Gmail's primary mail server, having a
+    preference of `5`, is `gmail-smtp-in.l.google.com`. That is the SMTP server you
+    would connect to in order to send mail to an `@gmail.com` address.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'It is also possible for MX records to have the same preference. Yahoo! uses
+    mail servers having the same preference. The following screenshot shows the MX
+    records for `yahoo.com`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/36cd8937-4fc7-4057-8168-7f2586deb7ce.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: In the preceding screenshot, we see that Yahoo! uses three mail servers. Each
+    server has a preference of `1`. This means that mail can be delivered to any one
+    of them with no special preference. If mail delivery fails to the first chosen
+    server, then another server should be chosen at random to retry.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Programmatically getting the MX record in a cross-platform manner can be difficult.
+    Please see [Chapter 5](3d80e3b8-07d3-49f4-b60f-b006a17f7213.xhtml), *Hostname
+    Resolution and DNS*, where this topic was covered in some depth. The SMTP client
+    we develop in this present chapter assumes that the mail server is known in advance.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Now that we know which server to connect to, let's consider the SMTP protocol
+    itself in more detail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: SMTP dialog
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: SMTP is a text-based TCP protocol that works on port `25`. SMTP works in a lock-step,
+    one-at-a-time dialog, with the client sending commands and the server sending
+    responses for each command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'In a typical session, the dialog goes as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The client first establishes a connection to the SMTP server.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The server initiates with a greeting. This greeting indicates that the server
+    is ready to receive commands.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The client then issues its own greeting.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The server responds.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The client sends a command indicating who the mail is from.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The server responds to indicate that the sender is accepted.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The client issues another command, which specifies the mail's recipient.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The server responds indicating the recipient is accepted.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The client then issues a `DATA` command.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The server responds asking the client to proceed.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The client transfers the email.
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: 'The protocol is very simple. In the following example SMTP session, `mail.example.net` is
+    the client, and the server is `mail.example.com` (`C` and `S` indicate whether
+    the client or server is sending, respectively):'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE5]'
+  prefs: []
+  type: TYPE_PRE
+- en: Everything the server sends is in reply to the client's commands, except for
+    the first line. The first line is simply in response to the client connecting.
+  prefs: []
+  type: TYPE_NORMAL
+- en: You may notice that each of the client's commands start with a four-letter word.
+    Each one of the server's responses starts with a three-digit code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The common client commands we use are as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`HELO` is used for the client to identify itself to the server.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`MAIL` is used to specify who is sending the mail.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`RCPT` is used to specify a recipient.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`DATA` is used to initiate the transfer of the actual email. This email should
+    include both headers and a body.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`QUIT` is used to end the session.'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: 'The server response codes used in a successful email transfer are the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '`220`: The service is ready'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`250`: The requested command was accepted and completed successfully'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`354`: Start sending the message'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '`221`: The connection is closing'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: Error codes vary between providers, but they are generally in the 500 range.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'SMTP servers can also send replies spanning multiple lines. In this case, the
+    very last line begins with the response code followed by a space. All preceding
+    lines begin with the response code followed by a dash. The following example illustrates
+    a multiline response after attempting to deliver to a mailbox that does not exist:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE6]'
+  prefs: []
+  type: TYPE_PRE
+- en: Note that some servers validate that the recipient address is valid before replying
+    to the `RCPT` command, but many servers only validate the recipient address after
+    the client sends the email using the `DATA` command.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although that explains the basics of the protocol used to send mail, we still
+    must consider the format of the email itself. This is covered next.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The format of an email
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: If we make an analogy to physical mail, the SMTP commands `MAIL FROM` and `RCPT
+    TO` address the envelope. Those commands give the SMTP server information on how
+    the mail is to be delivered. In this analogy, the `DATA` command would be the
+    letter inside the envelope. As it's common to address a physical letter inside
+    an envelope, it's also common to repeat the delivery information in the email,
+    even though it was already sent to the SMTP server through the `MAIL` and `RCPT`
+    commands.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'A simple email may look like the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE7]'
+  prefs: []
+  type: TYPE_PRE
+- en: The entire email is transmitted to an SMTP server following the `DATA` command.
+    A single period on an otherwise blank line is transmitted to indicate the end
+    of the email. If the email contains any line beginning with a period, the SMTP
+    client should replace it with two consecutive periods. This prevents the client
+    from indicating the email is over prematurely. The SMTP server knows that any
+    line beginning with two periods should be replaced with a single period.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The email itself can be divided into two parts—the header and the body. The
+    two parts are delineated by the first blank line.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The header part consists of various headers that indicate properties of the
+    email. `From`, `To`, `Subject`, and `Date` are the most common headers.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The body part of the email is simply the message being sent.
+  prefs: []
+  type: TYPE_NORMAL
+- en: With a basic understanding of the email format, we are now ready to begin writing
+    a simple C program to send emails.
+  prefs: []
+  type: TYPE_NORMAL
+- en: A simple SMTP client program
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'With a basic understanding of both SMTP and the email format, we are ready
+    to program a simple email client. Our client takes as inputs: the destination
+    email server, the recipient''s address, the sender''s address, the email subject
+    line, and the email body text.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our program begins by including the necessary headers with the following statements:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE8]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'We also define the following two constants to make buffer allocation and checking
+    easier:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE9]'
+  prefs: []
+  type: TYPE_PRE
+- en: Our program needs to prompt the user for input several times. This is required
+    to get the email server's hostname, the recipient's address, and so on. C provides
+    the `gets()` function for this purpose but `gets()` is deprecated in the latest
+    C standard. Therefore, we implement our own function.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following function, `get_input()`, prompts for user input:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE10]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `get_input()` function uses `fgets()` to read from `stdin`. The buffer passed
+    to `get_input()` is assumed to be `MAXINPUT` bytes, which we defined at the top
+    of the file.
+  prefs: []
+  type: TYPE_NORMAL
+- en: The `fgets()` function does not remove a newline character from the received
+    input; therefore, we overwrite the last character inputted with a terminating
+    null character.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is also very helpful to have a function that can send formatted strings directly
+    over the network. We implement a function called `send_format()` for this purpose.
+    It takes a socket, a formatting string, and the additional arguments to send.
+    You can think of `send_format()` as being very similar to `printf()`. The difference
+    is that `send_format()` delivers the formatted text over the network instead of
+    printing to the screen.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The code for `send_format()` is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE11]'
+  prefs: []
+  type: TYPE_PRE
+- en: The preceding code works by first reserving a buffer. `vsprintf()` is then used
+    to format the text into that buffer. It is up to the caller to ensure that the
+    formatted output doesn't exceed the reserved buffer space. We are assuming for
+    this program that the user is trusted, but in a production program, you would
+    want to add checks to prevent a buffer overflow here.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After the output text is formatted into `buffer`, it is sent using `send()`.
+    We also print the sent text to the screen. A `C:` is printed preceding it to indicate
+    that the text was sent by us, the client.
+  prefs: []
+  type: TYPE_NORMAL
+- en: One of the trickier parts of our SMTP client is parsing the SMTP server responses.
+    This is important because the SMTP client must not issue a second command until
+    a response is received for the first command. If the SMTP client sends a new command
+    before the server is ready, then the server will likely terminate the connection.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Recall that each SMTP response starts with a three-digit code. We want to parse
+    out this code to check for errors. Each SMTP response is usually followed by text
+    that we ignore. SMTP responses are typically only one line long, but they can
+    sometimes span multiple lines. In this case, each line up to the penultimate line
+    contains a dash character, `-`, directly following the three-digit response code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'To illustrate how multiline responses work, consider the following two responses
+    as equivalent:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE12]'
+  prefs: []
+  type: TYPE_PRE
+- en: It is important that our program recognizes multiline responses; it must not
+    mistakenly treat a single multiline response as separate responses.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'We implement a function called `parse_response()` for this purpose. It takes
+    in a null-terminated response string and returns the parsed response code. If
+    no code is found or the response isn''t complete, then `0` is returned instead.
+    The code for this function is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE13]'
+  prefs: []
+  type: TYPE_PRE
+- en: The `parse_response()` function begins by checking for a null terminator in
+    the first three characters of the response. If a null is found there, then the
+    function can return immediately because `response` isn't long enough to constitute
+    a valid SMTP response.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It then loops through the `response` input string. The loop goes until a null-terminating
+    character is found three characters out. Each loop, `isdigit()` is used to see
+    whether the current character and the next two characters are all digits. If so,
+    the fourth character, `k[3]`, is checked. If `k[3]` is a dash, then the response
+    continues onto the next line. However, if `k[3]` isn't a dash, then `k[0]` represents
+    the beginning of the last line of the SMTP response. In this case, the code checks
+    if the line ending has been received; `strstr()` is used for this purpose. It
+    the line ending was received, the code uses `strtol()` to convert the response
+    code to an integer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: If the code loops through `response()` without returning, then `0` is returned,
+    and the client needs to wait for more input from the SMTP server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'With `parse_response()` out of the way, it is useful to have a function that
+    waits until a particular response code is received over the network. We implement
+    a function called `wait_on_response()` for this purpose, which begins as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE14]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, a `response` buffer variable is reserved for storing
+    the SMTP server's response. A pointer, `p`, is set to the beginning of this buffer; `p` will
+    be incremented to point to the end of the received data, but it starts at `response`
+    since no data has been received yet. An `end` pointer variable is set to the end
+    of the buffer, which is useful to ensure we do not attempt to write past the buffer
+    end.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, we set `code = 0` to indicate that no response code has been received
+    yet.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The `wait_on_response()` function then continues with a loop as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE15]'
+  prefs: []
+  type: TYPE_PRE
+- en: The beginning of the preceding loop uses `recv()` to receive data from the SMTP
+    server. The received data is written at point `p` in the `response` array. We
+    are careful to use `end` to make sure received data isn't written past the end
+    of `response`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: After `recv()` returns, `p` is incremented to the end of the received data,
+    and a null terminating character is set. A check for `p == end` ensures that we
+    haven't written to the end of the response buffer.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Our function from earlier, `parse_response()`, is used to check whether a full
+    SMTP response has been received. If so, then `code` is set to that response. If
+    not, then `code` is equal to `0`, and the loop continues to receive additional
+    data.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After the loop terminates, the `wait_on_response()` function checks that the
+    received SMTP response code is as expected. If so, the received data is printed
+    to the screen, and the function returns. The code for this is as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE16]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes the `wait_on_response()` function. This function proves very
+    useful, and it is needed after every command sent to the SMTP server.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also define a function called `connect_to_host()`, which attempts to open
+    a TCP connection to a given hostname and port number. This function is extremely
+    similar to the code we've used in the previous chapters.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'First `getaddrinfo()` is used to resolve the hostname and `getnameinfo()` is
+    then used to print the server IP address. The following code achieves those two
+    purposes:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE17]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'A socket is then created with `socket()`, as shown in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE18]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the socket has been created, `connect()` is used to establish the connection.
+    The following code shows the use of `connect()` and the end of the `connect_to_host()`
+    function:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE19]'
+  prefs: []
+  type: TYPE_PRE
+- en: Don't forget to call `freeaddrinfo()` to free the memory allocated for the server
+    address, as shown by the preceding code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Finally, with those helper functions out of the way, we can begin on `main()`.
+    The following code defines `main()` and initializes Winsock if required:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE20]'
+  prefs: []
+  type: TYPE_PRE
+- en: See [Chapter 2](4f41c930-c4b4-47e5-b9ef-f8faf21fa96b.xhtml), *Getting to Grips
+    with Socket APIs*, for more information about initializing Winsock and establishing
+    connections.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our program can proceed by prompting the user for an SMTP hostname. This hostname
+    is stored in `hostname`, and our `connect_to_host()` function is used to open
+    a connection. The following code shows this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE21]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After the connection is established, our SMTP client must not issue any commands
+    until the server responds with a `220` code. We use `wait_on_response()` to wait
+    for this with the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE22]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Once the server is ready to receive commands, we must issue the `HELO` command.
+    The following code sends the `HELO` command and waits for a `250` response code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE23]'
+  prefs: []
+  type: TYPE_PRE
+- en: '`HELO` should be followed by the SMTP client''s hostname; however, since we
+    are probably running this client from a development machine, it''s likely we don''t
+    have a hostname setup. For this reason, we simply send `HONPWC`, although any
+    arbitrary string can be used. If you are running this client from a server, then
+    you should change the `HONPWC` string to a domain that points to your server.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Also, note the line ending used in the preceding code. The line ending used
+    by SMTP is a carriage return character followed by a line feed character. In C,
+    this is represented by `"\r\n"`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'Our program then prompts the user for the sending and receiving addresses and
+    issues the appropriate SMTP commands. This is done using `get_input()` to prompt
+    the user, `send_format()` to issue the SMTP commands, and `wait_on_response()`
+    to receive the SMTP server''s response:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE24]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'After the sender and receiver are specified, the next step in the SMTP is to
+    issue the `DATA` command. The `DATA` command instructs the server to listen for
+    the actual email. It is issued by the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE25]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our client program then prompts the user for an email subject line. After the
+    subject line is specified, it can send the email headers: `From`, `To`, and `Subject`.
+    The following code does this:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE26]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'It is also useful to add a date header. Emails use a special format for dates.
+    We can make use of the `strftime()` function to format the date properly. The
+    following code formats the date into the proper email header:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE27]'
+  prefs: []
+  type: TYPE_PRE
+- en: In the preceding code, the `time()` function is used to get the current date
+    and time, and `gmtime()` is used to convert it into a `timeinfo` struct. Then, `strftime()`
+    is called to format the data and time into a temporary buffer, `date`. This formatted
+    string is then transmitted to the SMTP server as an email header.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'After the email headers are sent, the email body is delineated by a blank line.
+    The following code sends this blank line:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE28]'
+  prefs: []
+  type: TYPE_PRE
+- en: We can then prompt the user for the body of the email using `get_input()`. The
+    body is transmitted one line at a time. When the user finishes their email, they
+    should enter a single period on a line by itself. This indicates both to our client
+    and the SMTP server that the email is finished.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The following code sends user input to the server until a single period is
+    inputted:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE29]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If the mail was accepted by the SMTP server, it sends a `250` response code.
+    Our client then issues the `QUIT` command and checks for a `221` response code.
+    The `221` response code indicates that the connection is terminating as shown
+    in the following code:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE30]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Our SMTP client concludes by closing the socket, cleaning up Winsock (if required),
+    and exiting as shown here:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE31]'
+  prefs: []
+  type: TYPE_PRE
+- en: That concludes `smtp_send.c`.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'You can compile and run `smtp_send.c` on Windows with MinGW using the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE32]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'On Linux or macOS, compiling and running `smtp_send.c` is done by the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE33]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The following screenshot shows the sending of a simple email using `smtp_send.c`:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '![](img/18ae9fc0-07ef-4066-afca-6be70e0c0e26.png)'
+  prefs: []
+  type: TYPE_IMG
+- en: 'If you''re doing a lot of testing, you may find it tedious to type in the email
+    each time. In that case, you can automate it by putting your text in a file and
+    using the `cat` utility to read it into `smtp_send`. For example, you may have
+    the `email.txt` file as follows:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE34]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'With the program input stored in `email.txt`, you can send an email using the
+    following command:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE35]'
+  prefs: []
+  type: TYPE_PRE
+- en: Hopefully, you can send some test emails with `smtp_send`. There are, however,
+    a few obstacles you may run into. Your ISP may block outgoing emails from your
+    connection, and many email servers do not accept mail from residential IP address
+    blocks. See the *Spam-blocking pitfalls* section later in the chapter for more
+    information.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Although `smtp_send` is useful for sending simple text-based messages, you may
+    be wondering how to add formatting to your email. Perhaps you want to send files
+    as attachments. The next section addresses these issues.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Enhanced emails
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: The emails we've been looking at so far have been only simple text. Modern email
+    usage often demands fancier formatted emails.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We can control the content type of an email using the `Content-Type` header.
+    This is very similar to the content type header used by HTTP, which we covered
+    in [Chapter 7](f352830e-089c-4369-b7a2-18a896e1c5d5.xhtml), *Building a Simple
+    Web Server*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'If the content type header is missing, a content type of `text/plain` is assumed
+    by default. Therefore, the `Content-Type` header in the following email is redundant:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE36]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'If you want formatting support in your email, which is common today, you should
+    use a `text/html` content type. In the following email, HTML is used to add emphasis:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE37]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'Not all email clients support HTML emails. For this reason, it may be useful
+    to encode your message as both plaintext and HTML. The following email uses this
+    technique:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE38]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding email example uses two headers to indicate that it''s a multipart
+    message. The first one, `MIME-Version: 1.0`, indicates which version of **Multipurpose
+    Internet Mail Extensions** (**MIME**) we''re using. MIME is used for all emails
+    that aren''t simply plaintext.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'The second header, `Content-Type: multipart/alternative; boundary="SEPARATOR"`,
+    specifies that we''re sending a multipart message. It also specifies a special
+    boundary character sequence that delineates the parts of the email. In our example,
+    `SEPARATOR` is used as the boundary. It is important that the boundary not appear
+    in the email text or attachments. In practice, boundary specifiers are often long
+    randomly generated strings.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Once the boundary has been set, each part of the email begins with `--SEPARATOR`
+    on a line by itself. The email ends with `--SEPARATOR--`. Note that each part
+    of the message gets its own header section, specific to only that part. These
+    header sections are used to specify the content type for each part.
+  prefs: []
+  type: TYPE_NORMAL
+- en: It is also often useful to attach files to email, which we will cover now.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Email file attachments
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'If a multipart email is being sent, a part can be designated as an attachment
+    using the `Content-Disposition` header. See the following example:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE39]'
+  prefs: []
+  type: TYPE_PRE
+- en: 'The preceding example includes a file called `my_file.txt`. SMTP is a purely
+    text-based protocol; therefore, any attachments that may include binary data need
+    to be encoded into a text format. Base64 encoding is commonly used for this purpose.
+    In this example, the header, `Content-Transfer-Encoding: base64`, specifies that
+    we are going to use Base64 encoding.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: The content of `my_file.txt` is `This is a simple text message`. That sentence
+    encodes to Base64 as `VGhpcyBpcyBhIHNpbXBsZSB0ZXh0IG1lc3NhZ2Uu` as seen in the
+    preceding code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Spam-blocking pitfalls
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: It can be much harder to send emails today than it was in the past. Spam has
+    become a major problem, and every provider is taking actions to curb it. Unfortunately,
+    many of these actions can also make it much more difficult to send legitimate
+    emails.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Many residential ISPs don't allow outgoing connections on port `25`. If your
+    residential provider blocks port `25`, then you won't be able to establish an
+    SMTP connection. In this case, you may consider renting a virtual private server
+    to run this chapter's code.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Even if your ISP does allow outgoing connections on port `25`, many SMTP servers
+    won't accept mail from a residential IP address. Of the servers that do, many
+    will send those emails straight into a spam folder.
+  prefs: []
+  type: TYPE_NORMAL
+- en: 'For example, if you attempt to deliver an email to Gmail, you may get a response
+    similar to the following:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '[PRE40]'
+  prefs: []
+  type: TYPE_PRE
+- en: Another spam-blocking measure that may trip you up is **Sender Policy Framework**
+    (**SPF**). SPF works by listing which servers can send mail for a given domain.
+    If a sending server isn't on the SPF list, then receiving SMTP servers reject
+    their mail.
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**DomainKeys Identified Mail** (**DKIM**) is a measure to authenticate email
+    using digital signatures. Many popular email providers are more likely to treat
+    non-DKIM mail as spam. DKIM signing is very complicated and out of scope for this
+    book.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**Domain-based Message Authentication*,* Reporting, and Conformance** (**DMARC**)
+    is a technique used for domains to publish whether SPF and/or DKIM is required
+    of mail originating from them, among other things.'
+  prefs: []
+  type: TYPE_NORMAL
+- en: Most commercial email servers use SPF, DKIM, and DMARC. If you're sending email
+    without these, your email will likely be treated as spam. If you're sending email
+    in opposition to these, your email will either be rejected outright or labeled
+    as spam.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Finally, many popular providers assign a reputation to sending domains and servers.
+    This puts potential emails senders in a catch-22 situation. Email can't be delivered
+    without building a reputation, but a reputation can't be built without successfully
+    delivering lots of emails. As spam continues to be a major problem, we may soon
+    come to a time where only big-name, trusted SMTP servers can operate with each
+    other. Let's hope it doesn't come to that!
+  prefs: []
+  type: TYPE_NORMAL
+- en: If your program needs to send email reliably, you should likely consider using
+    an email service provider. One option is to allow an SMTP relay to do the final
+    delivery. A potentially easier option is to use a mail sending service that operates
+    an HTTP API.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Summary
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: In this chapter, we looked at how email is delivered over the internet. SMTP,
+    the protocol responsible for email delivery, was studied in some depth. We then
+    constructed a simple program to send short emails using SMTP.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We looked at the email format too. We saw how MIME could be used to send multipart
+    emails with file attachments.
+  prefs: []
+  type: TYPE_NORMAL
+- en: We also saw how sending emails over the modern internet is full of pitfalls.
+    Many of these stems from attempts to block spam. Techniques used by providers,
+    such as blocking residential IP addresses, SPF, DKIM, DMARC, and IP address reputation
+    monitoring, may make it difficult for our simple program to deliver email reliably.
+  prefs: []
+  type: TYPE_NORMAL
+- en: In the next chapter, [Chapter 9](47ba170d-42d9-4e38-b5d8-89503e005708.xhtml), *Loading
+    Secure Web Pages with HTTPS and OpenSSL*, we look at secure web connections using
+    HTTPS.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Questions
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'Try these questions to test your knowledge from this chapter:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: What port does SMTP operate on?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How do you determine which SMTP server receives mail for a given domain?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How do you determine which SMTP server sends mail for a given provider?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: Why won't an SMTP server relay mail without authentication?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: How are binary files sent as email attachments when SMTP is a text-based protocol?
+  prefs:
+  - PREF_OL
+  type: TYPE_NORMAL
+- en: The answers can be found in [Appendix A](bd8b8f52-52cb-4d34-b01b-e907564bfece.xhtml),
+    *Answers to Questions*.
+  prefs: []
+  type: TYPE_NORMAL
+- en: Further reading
+  prefs:
+  - PREF_H1
+  type: TYPE_NORMAL
+- en: 'For more information about SMTP and email formats, please refer to the following
+    links:'
+  prefs: []
+  type: TYPE_NORMAL
+- en: '**RFC 821**: *Simple Mail Transfer Protocol* ([https://tools.ietf.org/html/rfc821](https://tools.ietf.org/html/rfc821))'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
+- en: '**RFC 2822**: *Internet* *Message Format* ([https://tools.ietf.org/html/rfc2822](https://tools.ietf.org/html/rfc2822))'
+  prefs:
+  - PREF_UL
+  type: TYPE_NORMAL
